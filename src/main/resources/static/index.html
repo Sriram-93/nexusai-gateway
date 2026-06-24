@@ -1,0 +1,1211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NexusAI Gateway - Observability & Routing Control Center</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        :root {
+            --bg-dark: #040613;
+            --bg-card: rgba(10, 15, 36, 0.7);
+            --border-glass: rgba(255, 255, 255, 0.07);
+            --primary: #6366f1;
+            --primary-glow: rgba(99, 102, 241, 0.2);
+            --secondary: #06b6d4;
+            --secondary-glow: rgba(6, 182, 212, 0.2);
+            --accent-gemini: #1a73e8;
+            --accent-groq: #eab308;
+            --accent-openai: #10b981;
+            --accent-claude: #f97316;
+            --accent-ollama: #8b5cf6;
+            --text-main: #f3f4f6;
+            --text-muted: #9ca3af;
+            --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            background-image: 
+                radial-gradient(circle at 10% 20%, rgba(99, 102, 241, 0.08) 0%, transparent 45%),
+                radial-gradient(circle at 90% 80%, rgba(6, 182, 212, 0.08) 0%, transparent 45%);
+        }
+
+        /* Header Style */
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 2rem;
+            background: rgba(4, 6, 19, 0.85);
+            backdrop-filter: blur(16px);
+            border-bottom: 1px solid var(--border-glass);
+            z-index: 10;
+        }
+
+        .logo-section {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .logo-icon {
+            font-size: 1.8rem;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            filter: drop-shadow(0 0 8px var(--primary-glow));
+        }
+
+        .logo-title {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.5rem;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            background: linear-gradient(to right, #ffffff, #d1d5db);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .logo-tag {
+            font-size: 0.75rem;
+            background: rgba(99, 102, 241, 0.15);
+            color: #818cf8;
+            padding: 0.15rem 0.5rem;
+            border-radius: 9999px;
+            border: 1px solid rgba(99, 102, 241, 0.3);
+            font-weight: 600;
+        }
+
+        .badge-container {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .mock-badge {
+            display: flex;
+            align-items: center;
+            gap: 0.35rem;
+            font-size: 0.75rem;
+            background: rgba(16, 185, 129, 0.1);
+            color: #34d399;
+            padding: 0.35rem 0.75rem;
+            border-radius: 8px;
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            font-weight: 600;
+        }
+
+        .developer-badge {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            background: rgba(255, 255, 255, 0.03);
+            padding: 0.35rem 0.75rem;
+            border-radius: 8px;
+            border: 1px solid var(--border-glass);
+        }
+
+        .developer-badge i {
+            color: var(--secondary);
+        }
+
+        /* Main Workspace split in Sidebar + Chat panel */
+        .workspace {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        /* Sidebar - Routing Controller & Visualizer */
+        .sidebar {
+            width: 380px;
+            background: rgba(6, 8, 20, 0.45);
+            border-right: 1px solid var(--border-glass);
+            padding: 1.25rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1.25rem;
+            overflow-y: auto;
+        }
+
+        .card {
+            background: var(--bg-card);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--border-glass);
+            border-radius: 16px;
+            padding: 1.1rem;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
+        }
+
+        .card-title {
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.95rem;
+            font-weight: 700;
+            margin-bottom: 0.75rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: #ffffff;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .card-title i {
+            color: var(--secondary);
+        }
+
+        /* Mode Selector Override */
+        .mode-selector {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .selector-label {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-bottom: 0.25rem;
+            font-weight: 600;
+        }
+
+        .custom-select {
+            background: rgba(13, 17, 33, 0.9);
+            border: 1px solid var(--border-glass);
+            color: #ffffff;
+            border-radius: 8px;
+            padding: 0.6rem;
+            font-size: 0.85rem;
+            outline: none;
+            width: 100%;
+            cursor: pointer;
+            transition: var(--transition-smooth);
+        }
+
+        .custom-select:focus {
+            border-color: var(--primary);
+        }
+
+        /* Priority indicators display style */
+        .priority-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .priority-btn {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border-glass);
+            padding: 0.65rem 0.85rem;
+            border-radius: 10px;
+            text-align: left;
+            pointer-events: none;
+            transition: var(--transition-smooth);
+        }
+
+        .priority-btn.active[data-priority="HIGH"] {
+            border-color: #3b82f6;
+            background: rgba(59, 130, 246, 0.12);
+            box-shadow: 0 0 10px rgba(59, 130, 246, 0.15);
+        }
+
+        .priority-btn.active[data-priority="MEDIUM"] {
+            border-color: #eab308;
+            background: rgba(234, 179, 8, 0.1);
+            box-shadow: 0 0 10px rgba(234, 179, 8, 0.15);
+        }
+
+        .priority-btn.active[data-priority="LOW"] {
+            border-color: #10b981;
+            background: rgba(16, 185, 129, 0.1);
+            box-shadow: 0 0 10px rgba(16, 185, 129, 0.15);
+        }
+
+        .priority-info h4 {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: #ffffff;
+        }
+
+        .priority-info p {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+        }
+
+        .priority-badge {
+            font-size: 0.65rem;
+            padding: 0.15rem 0.45rem;
+            border-radius: 4px;
+            font-weight: 700;
+        }
+
+        .priority-btn[data-priority="HIGH"] .priority-badge {
+            background: rgba(59, 130, 246, 0.2);
+            color: #60a5fa;
+            border: 1px solid rgba(59, 130, 246, 0.3);
+        }
+
+        .priority-btn[data-priority="MEDIUM"] .priority-badge {
+            background: rgba(234, 179, 8, 0.2);
+            color: #fef08a;
+            border: 1px solid rgba(234, 179, 8, 0.3);
+        }
+
+        .priority-btn[data-priority="LOW"] .priority-badge {
+            background: rgba(16, 185, 129, 0.2);
+            color: #34d399;
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+
+        /* Routing Path Visualizer */
+        .routing-visualizer {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.45rem;
+            padding: 0.25rem 0;
+        }
+
+        .node {
+            width: 100%;
+            padding: 0.55rem;
+            border-radius: 8px;
+            text-align: center;
+            font-weight: 600;
+            font-size: 0.75rem;
+            border: 1px solid var(--border-glass);
+            background: rgba(255, 255, 255, 0.02);
+            transition: var(--transition-smooth);
+        }
+
+        .node.source {
+            background: rgba(99, 102, 241, 0.12);
+            border-color: rgba(99, 102, 241, 0.3);
+        }
+
+        .node.router {
+            background: rgba(6, 182, 212, 0.12);
+            border-color: rgba(6, 182, 212, 0.3);
+        }
+
+        .connector-line {
+            width: 2px;
+            height: 15px;
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .dest-nodes {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            width: 100%;
+            gap: 0.45rem;
+        }
+
+        .dest-node {
+            padding: 0.5rem 0.25rem;
+            border-radius: 8px;
+            font-size: 0.7rem;
+            font-weight: 700;
+            border: 1px solid var(--border-glass);
+            background: rgba(255, 255, 255, 0.02);
+            opacity: 0.3;
+            transition: var(--transition-smooth);
+            text-align: center;
+        }
+
+        /* Provider Active Visualizer styles */
+        .dest-node.active-gemini {
+            opacity: 1;
+            background: rgba(26, 115, 232, 0.15);
+            border-color: #1a73e8;
+            box-shadow: 0 0 10px rgba(26, 115, 232, 0.25);
+            color: #8ab4f8;
+        }
+
+        .dest-node.active-groq {
+            opacity: 1;
+            background: rgba(234, 179, 8, 0.15);
+            border-color: #eab308;
+            box-shadow: 0 0 10px rgba(234, 179, 8, 0.25);
+            color: #fef08a;
+        }
+
+        .dest-node.active-openai {
+            opacity: 1;
+            background: rgba(16, 185, 129, 0.15);
+            border-color: #10b981;
+            box-shadow: 0 0 10px rgba(16, 185, 129, 0.25);
+            color: #6ee7b7;
+        }
+
+        .dest-node.active-claude {
+            opacity: 1;
+            background: rgba(249, 115, 22, 0.15);
+            border-color: #f97316;
+            box-shadow: 0 0 10px rgba(249, 115, 22, 0.25);
+            color: #ffedd5;
+        }
+
+        .dest-node.active-ollama {
+            opacity: 1;
+            background: rgba(139, 92, 246, 0.15);
+            border-color: #8b5cf6;
+            box-shadow: 0 0 10px rgba(139, 92, 246, 0.25);
+            color: #ddd6fe;
+        }
+
+        /* Metrics Card */
+        .analytics-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 0.5rem;
+        }
+
+        .metric-box {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border-glass);
+            padding: 0.55rem;
+            border-radius: 10px;
+            text-align: center;
+        }
+
+        .metric-value {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.05rem;
+            font-weight: 700;
+            color: #ffffff;
+        }
+
+        .metric-label {
+            font-size: 0.65rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-top: 0.15rem;
+        }
+
+        /* Chat Window */
+        .chat-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: rgba(7, 9, 19, 0.35);
+            height: 100%;
+        }
+
+        .chat-messages {
+            flex: 1;
+            padding: 1.5rem;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 1.25rem;
+        }
+
+        .message {
+            display: flex;
+            flex-direction: column;
+            max-width: 75%;
+            animation: fadeIn 0.25s ease-out forwards;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .message.user {
+            align-self: flex-end;
+            align-items: flex-end;
+        }
+
+        .message.system {
+            align-self: flex-start;
+            align-items: flex-start;
+        }
+
+        .message-bubble {
+            padding: 0.85rem 1.1rem;
+            border-radius: 16px;
+            font-size: 0.9rem;
+            line-height: 1.5;
+            position: relative;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        .message.user .message-bubble {
+            background: linear-gradient(135deg, var(--primary), #4f46e5);
+            color: #ffffff;
+            border-bottom-right-radius: 4px;
+        }
+
+        .message.system .message-bubble {
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid var(--border-glass);
+            color: #f3f4f6;
+            border-bottom-left-radius: 4px;
+        }
+
+        .message-meta {
+            margin-top: 0.35rem;
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            gap: 0.45rem;
+        }
+
+        .provider-pill {
+            font-size: 0.6rem;
+            font-weight: 800;
+            padding: 0.1rem 0.45rem;
+            border-radius: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .provider-pill.gemini {
+            background: rgba(26, 115, 232, 0.15);
+            color: #8ab4f8;
+            border: 1px solid rgba(26, 115, 232, 0.3);
+        }
+
+        .provider-pill.groq {
+            background: rgba(234, 179, 8, 0.15);
+            color: #fef08a;
+            border: 1px solid rgba(234, 179, 8, 0.3);
+        }
+
+        .provider-pill.openai {
+            background: rgba(16, 185, 129, 0.15);
+            color: #6ee7b7;
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+
+        .provider-pill.claude {
+            background: rgba(249, 115, 22, 0.15);
+            color: #ffedd5;
+            border: 1px solid rgba(249, 115, 22, 0.3);
+        }
+
+        .provider-pill.ollama {
+            background: rgba(139, 92, 246, 0.15);
+            color: #ddd6fe;
+            border: 1px solid rgba(139, 92, 246, 0.3);
+        }
+
+        .provider-pill.system-badge {
+            background: rgba(255, 255, 255, 0.08);
+            color: var(--text-muted);
+            border: 1px solid var(--border-glass);
+        }
+
+        .latency-text {
+            display: flex;
+            align-items: center;
+            gap: 0.2rem;
+        }
+
+        .latency-text i {
+            font-size: 0.65rem;
+        }
+
+        /* Input Panel */
+        .chat-input-area {
+            padding: 1rem 1.5rem;
+            background: rgba(4, 6, 19, 0.75);
+            backdrop-filter: blur(12px);
+            border-top: 1px solid var(--border-glass);
+        }
+
+        .input-wrapper {
+            display: flex;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border-glass);
+            border-radius: 12px;
+            padding: 0.4rem 0.65rem;
+            align-items: center;
+            gap: 0.5rem;
+            transition: var(--transition-smooth);
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .input-wrapper:focus-within {
+            border-color: rgba(99, 102, 241, 0.5);
+            box-shadow: 0 0 15px rgba(99, 102, 241, 0.12);
+            background: rgba(255, 255, 255, 0.04);
+        }
+
+        .chat-input {
+            flex: 1;
+            background: transparent;
+            border: none;
+            outline: none;
+            color: #ffffff;
+            font-size: 0.9rem;
+            padding: 0.4rem;
+            font-family: inherit;
+        }
+
+        .chat-input::placeholder {
+            color: rgba(255, 255, 255, 0.3);
+        }
+
+        .send-btn {
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            border: none;
+            color: #ffffff;
+            width: 35px;
+            height: 35px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: var(--transition-smooth);
+        }
+
+        .send-btn:hover {
+            transform: scale(1.04);
+            box-shadow: 0 0 10px rgba(99, 102, 241, 0.3);
+        }
+
+        /* Bottom Real-time Logs Console */
+        .bottom-console {
+            height: 200px;
+            background: rgba(3, 4, 10, 0.9);
+            border-top: 1px solid var(--border-glass);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            transition: height 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .bottom-console.collapsed {
+            height: 35px;
+        }
+
+        .console-header {
+            padding: 0.45rem 1rem;
+            background: rgba(255, 255, 255, 0.02);
+            border-bottom: 1px solid var(--border-glass);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: var(--text-muted);
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+
+        .console-header i {
+            color: var(--secondary);
+            margin-right: 0.35rem;
+        }
+
+        .console-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 0.5rem 1rem;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 0.75rem;
+        }
+
+        .log-table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+        }
+
+        .log-table th {
+            padding: 0.35rem 0.5rem;
+            color: var(--text-muted);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            font-weight: 700;
+        }
+
+        .log-table td {
+            padding: 0.35rem 0.5rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+            color: #e5e7eb;
+            max-width: 250px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .log-status-badge {
+            font-weight: 700;
+            font-size: 0.65rem;
+            padding: 0.05rem 0.35rem;
+            border-radius: 4px;
+        }
+
+        .log-status-badge.success {
+            background: rgba(16, 185, 129, 0.15);
+            color: #10b981;
+        }
+
+        .log-status-badge.fallback {
+            background: rgba(234, 179, 8, 0.15);
+            color: #fbbf24;
+        }
+
+        .log-status-badge.failed {
+            background: rgba(239, 68, 68, 0.15);
+            color: #ef4444;
+        }
+
+        .typing-indicator {
+            display: flex;
+            gap: 4px;
+            padding: 0.5rem;
+            align-items: center;
+        }
+
+        .typing-dot {
+            width: 6px;
+            height: 6px;
+            background: var(--text-muted);
+            border-radius: 50%;
+            animation: bounce 1.4s infinite ease-in-out both;
+        }
+
+        .typing-dot:nth-child(1) { animation-delay: -0.32s; }
+        .typing-dot:nth-child(2) { animation-delay: -0.16s; }
+
+        @keyframes bounce {
+            0%, 80%, 100% { transform: scale(0); }
+            40% { transform: scale(1.0); }
+        }
+
+        /* Scrollbars */
+        ::-webkit-scrollbar {
+            width: 5px;
+            height: 5px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 999px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="logo-section">
+            <i class="fa-solid fa-bolt logo-icon"></i>
+            <span class="logo-title">NexusAI Gateway</span>
+            <span class="logo-tag">Tier 1</span>
+        </div>
+        <div class="badge-container">
+            <a href="/logs.html" style="text-decoration: none; color: #38bdf8; background: rgba(56, 189, 248, 0.12); border: 1px solid rgba(56, 189, 248, 0.3); padding: 0.35rem 0.75rem; border-radius: 8px; font-size: 0.75rem; font-weight: 700; display: flex; align-items: center; gap: 0.35rem; transition: all 0.3s ease; margin-right: 0.5rem;" onmouseover="this.style.background='rgba(56, 189, 248, 0.25)'" onmouseout="this.style.background='rgba(56, 189, 248, 0.12)'">
+                <i class="fa-solid fa-table-list"></i> Logs Viewer
+            </a>
+            <div class="mock-badge">
+                <i class="fa-solid fa-wand-magic-sparkles"></i> Mock Simulation Enabled
+            </div>
+            <div class="developer-badge">
+                <i class="fa-solid fa-code"></i> Developer: Sriram
+            </div>
+        </div>
+    </header>
+
+    <div class="workspace">
+        <!-- Sidebar Controls -->
+        <div class="sidebar">
+            <!-- Mode / Override Selector -->
+            <div class="card">
+                <div class="card-title">
+                    <i class="fa-solid fa-sliders"></i>
+                    <span>Routing Controls</span>
+                </div>
+                <div class="mode-selector">
+                    <div class="selector-label">Gateway Resolution Mode:</div>
+                    <select class="custom-select" id="override-select">
+                        <option value="">Auto Routing (Smart Heuristic)</option>
+                        <option value="gemini">Force Google Gemini 2.5 Flash</option>
+                        <option value="openai">Force OpenAI GPT-4o-Mini</option>
+                        <option value="claude">Force Claude 3.5 Haiku</option>
+                        <option value="groq-70b">Force Groq Llama 3.3 70B</option>
+                        <option value="groq-8b">Force Groq Llama 3.1 8B</option>
+                        <option value="ollama">Force Local Ollama (Llama 3)</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Dynamic Routing Rules -->
+            <div class="card">
+                <div class="card-title">
+                    <i class="fa-solid fa-circle-nodes"></i>
+                    <span>Auto Classification Tiers</span>
+                </div>
+                <div class="priority-group">
+                    <div class="priority-btn" data-priority="HIGH">
+                        <div class="priority-info">
+                            <h4>High Complexity</h4>
+                            <p>Gemini / OpenAI (Coding, Math)</p>
+                        </div>
+                        <span class="priority-badge">HIGH</span>
+                    </div>
+                    <div class="priority-btn" data-priority="MEDIUM">
+                        <div class="priority-info">
+                            <h4>Medium Complexity</h4>
+                            <p>Claude / Groq 70B (General Q&A)</p>
+                        </div>
+                        <span class="priority-badge">MEDIUM</span>
+                    </div>
+                    <div class="priority-btn" data-priority="LOW">
+                        <div class="priority-info">
+                            <h4>Low Complexity</h4>
+                            <p>Groq 8B / Ollama (Greetings, Speed)</p>
+                        </div>
+                        <span class="priority-badge">LOW</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Active Gateway Route Map -->
+            <div class="card">
+                <div class="card-title">
+                    <i class="fa-solid fa-route"></i>
+                    <span>Active Gateway Route</span>
+                </div>
+                <div class="routing-visualizer">
+                    <div class="node source">ChatRequest (UI Client)</div>
+                    <div class="connector-line"></div>
+                    <div class="node router">RoutingService Engine</div>
+                    <div class="connector-line"></div>
+                    <div class="dest-nodes">
+                        <div class="dest-node" id="node-gemini">Gemini Flash</div>
+                        <div class="dest-node" id="node-openai">GPT-4o-Mini</div>
+                        <div class="dest-node" id="node-claude">Claude Haiku</div>
+                        <div class="dest-node" id="node-llama-70b">Llama 70B</div>
+                        <div class="dest-node" id="node-llama-8b">Llama 8B</div>
+                        <div class="dest-node" id="node-ollama">Ollama Local</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Session Metrics Dashboard -->
+            <div class="card">
+                <div class="card-title">
+                    <i class="fa-solid fa-chart-bar"></i>
+                    <span>Session Observability</span>
+                </div>
+                <div class="analytics-grid">
+                    <div class="metric-box">
+                        <div class="metric-value" id="metric-requests">0</div>
+                        <div class="metric-label">Requests</div>
+                    </div>
+                    <div class="metric-box">
+                        <div class="metric-value" id="metric-latency">0 ms</div>
+                        <div class="metric-label">Avg Latency</div>
+                    </div>
+                    <div class="metric-box">
+                        <div class="metric-value" id="metric-cost">$0.00</div>
+                        <div class="metric-label">Est. Cost</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Chat Container -->
+        <div class="chat-container">
+            <div class="chat-messages" id="chat-messages">
+                <div class="message system">
+                    <div class="message-bubble">
+                        Welcome to the **NexusAI Gateway Control Panel**! 
+                        <br><br>
+                        This dashboard lets you test the gateway's **asynchronous routing logic**, **resilient fallbacks**, and **token/cost calculations** in real-time.
+                        <br><br>
+                        * Select a forced provider override in the dropdown, or keep it on **Auto** to let the gateway's classifier route based on your prompt complexity.
+                        * Database logs are saved dynamically and will populate in the bottom table!
+                    </div>
+                    <div class="message-meta">
+                        <span class="provider-pill system-badge">System</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="chat-input-area">
+                <div class="input-wrapper">
+                    <input type="text" id="chat-input" class="chat-input" placeholder="Type a message or programming task to test gateway routing..." autocomplete="off">
+                    <button id="send-btn" class="send-btn">
+                        <i class="fa-solid fa-paper-plane"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bottom Real-time Audit Logs Console -->
+    <div class="bottom-console collapsed" id="bottom-console">
+        <div class="console-header" style="cursor: pointer;" id="console-header-toggle">
+            <div><i class="fa-solid fa-database"></i> Database Audit Logs (Live from H2/PostgreSQL)</div>
+            <div style="display: flex; align-items: center; gap: 0.75rem;">
+                <span>Latest 5 Writes</span>
+                <i class="fa-solid fa-chevron-up" id="console-toggle-icon" style="transition: transform 0.3s ease;"></i>
+            </div>
+        </div>
+        <div class="console-body">
+            <table class="log-table">
+                <thead>
+                    <tr>
+                        <th style="width: 15%">Timestamp</th>
+                        <th style="width: 10%">User ID</th>
+                        <th style="width: 25%">Prompt</th>
+                        <th style="width: 15%">Provider/Model</th>
+                        <th style="width: 10%">Latency</th>
+                        <th style="width: 10%">Tokens</th>
+                        <th style="width: 10%">Cost (USD)</th>
+                        <th style="width: 5%">Status</th>
+                    </tr>
+                </thead>
+                <tbody id="logs-body">
+                    <tr>
+                        <td colspan="8" style="text-align: center; color: var(--text-muted); padding: 1.5rem 0;">
+                            No database log entries found yet. Send a request to query logs dynamically!
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        const chatMessages = document.getElementById('chat-messages');
+        const chatInput = document.getElementById('chat-input');
+        const sendBtn = document.getElementById('send-btn');
+        const overrideSelect = document.getElementById('override-select');
+        const priorityButtons = document.querySelectorAll('.priority-btn');
+        const logsBody = document.getElementById('logs-body');
+        
+        // Routing visualizer nodes
+        const nodes = {
+            gemini: document.getElementById('node-gemini'),
+            openai: document.getElementById('node-openai'),
+            claude: document.getElementById('node-claude'),
+            'groq-70b': document.getElementById('node-llama-70b'),
+            'groq-8b': document.getElementById('node-llama-8b'),
+            ollama: document.getElementById('node-ollama')
+        };
+        
+        const metricRequests = document.getElementById('metric-requests');
+        const metricLatency = document.getElementById('metric-latency');
+        const metricCost = document.getElementById('metric-cost');
+
+        let totalRequests = 0;
+        let cumulativeLatency = 0;
+        let cumulativeCost = 0.0;
+
+        // Reset visual active state and highlight the matching active node
+        function updateRoutingVisualization(providerName, modelName, priority) {
+            // Remove active classes
+            Object.values(nodes).forEach(node => {
+                node.className = 'dest-node';
+            });
+            priorityButtons.forEach(btn => btn.classList.remove('active'));
+
+            // Highlight priority card
+            if (priority) {
+                const btn = document.querySelector(`.priority-btn[data-priority="${priority.toUpperCase()}"]`);
+                if (btn) btn.classList.add('active');
+            }
+
+            // Map provider key
+            if (!providerName) return;
+            let key = providerName.toLowerCase();
+            if (key === 'groq') {
+                key = modelName && modelName.toLowerCase().includes('70b') ? 'groq-70b' : 'groq-8b';
+            }
+
+            if (nodes[key]) {
+                const activeClass = `active-${key.split('-')[0]}`;
+                nodes[key].classList.add(activeClass);
+            }
+        }
+
+        // Add message bubble helper
+        function appendMessage(text, type, provider = null, latency = null, cost = null, tokens = null) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${type}`;
+
+            let metaHtml = '';
+            if (type === 'system' && provider) {
+                // Map style pill class
+                let pillClass = 'system-badge';
+                const provLower = provider.toLowerCase();
+                if (provLower.includes('gemini')) pillClass = 'gemini';
+                else if (provLower.includes('groq')) pillClass = 'groq';
+                else if (provLower.includes('openai')) pillClass = 'openai';
+                else if (provLower.includes('claude') || provLower.includes('anthropic')) pillClass = 'claude';
+                else if (provLower.includes('ollama')) pillClass = 'ollama';
+
+                const latencyHtml = latency ? `<span class="latency-text"><i class="fa-solid fa-bolt"></i> ${latency}ms</span>` : '';
+                const costHtml = cost !== null ? `<span class="latency-text"><i class="fa-solid fa-coins"></i> $${cost.toFixed(6)}</span>` : '';
+                const tokenHtml = tokens !== null ? `<span class="latency-text"><i class="fa-solid fa-chart-simple"></i> ${tokens}t</span>` : '';
+
+                metaHtml = `
+                    <div class="message-meta">
+                        <span class="provider-pill ${pillClass}">${provider}</span>
+                        ${latencyHtml}
+                        ${tokenHtml}
+                        ${costHtml}
+                    </div>
+                `;
+            }
+
+            messageDiv.innerHTML = `
+                <div class="message-bubble">${formatMarkdown(text)}</div>
+                ${metaHtml}
+            `;
+
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        // Minimal markdown parser
+        function formatMarkdown(text) {
+            return text
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                .replace(/`(.*?)`/g, '<code>$1</code>')
+                .replace(/\n/g, '<br>');
+        }
+
+        // Add typing indicator helper
+        function showTypingIndicator() {
+            const indicatorDiv = document.createElement('div');
+            indicatorDiv.className = 'message system typing-container';
+            indicatorDiv.id = 'typing-indicator';
+            indicatorDiv.innerHTML = `
+                <div class="message-bubble typing-indicator">
+                    <div class="typing-dot"></div>
+                    <div class="typing-dot"></div>
+                    <div class="typing-dot"></div>
+                </div>
+            `;
+            chatMessages.appendChild(indicatorDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function removeTypingIndicator() {
+            const indicator = document.getElementById('typing-indicator');
+            if (indicator) {
+                indicator.remove();
+            }
+        }
+
+        // Load DB Request Logs in bottom Console
+        async function fetchDatabaseLogs() {
+            try {
+                const response = await fetch('/api/logs');
+                if (!response.ok) return [];
+                const logs = await response.json();
+                
+                // Show latest 5 logs, reverse sorted (newest first)
+                const sortedLogs = logs.slice(-5).reverse();
+                
+                if (sortedLogs.length === 0) {
+                    logsBody.innerHTML = `
+                        <tr>
+                            <td colspan="8" style="text-align: center; color: var(--text-muted); padding: 1.5rem 0;">
+                                No database log entries found yet. Send a request to query logs dynamically!
+                            </td>
+                        </tr>
+                    `;
+                    return [];
+                }
+
+                logsBody.innerHTML = sortedLogs.map(log => {
+                    const date = log.timestamp ? log.timestamp.split('T')[1].substring(0, 8) : '--:--:--';
+                    
+                    let statusClass = 'success';
+                    if (log.status === 'FAILED') statusClass = 'failed';
+                    else if (log.status === 'FALLBACK_RECOVERY') statusClass = 'fallback';
+
+                    const costVal = log.costUsd ? log.costUsd.toFixed(6) : '0.000000';
+                    const tokensVal = log.tokenUsage ? log.tokenUsage : 0;
+                    
+                    return `
+                        <tr>
+                            <td>${date}</td>
+                            <td>${log.userId}</td>
+                            <td title="${log.prompt}">${log.prompt}</td>
+                            <td><strong>${log.provider}</strong> (${log.model})</td>
+                            <td>${log.latencyMs} ms</td>
+                            <td>${tokensVal}</td>
+                            <td>$${costVal}</td>
+                            <td><span class="log-status-badge ${statusClass}">${log.status}</span></td>
+                        </tr>
+                    `;
+                }).join('');
+
+                return logs;
+            } catch (err) {
+                console.error("Failed to fetch logs:", err);
+                return [];
+            }
+        }
+
+        // Trigger request to backend API
+        async function sendMessage() {
+            const text = chatInput.value.trim();
+            if (!text) return;
+
+            chatInput.value = '';
+            appendMessage(text, 'user');
+            showTypingIndicator();
+
+            // Check if user is overriding routing
+            const selectedOverride = overrideSelect.value;
+            
+            const payload = {
+                message: text,
+                userId: 'sriram-kec'
+            };
+
+            // Map override model/provider tags
+            if (selectedOverride) {
+                if (selectedOverride === 'groq-70b') {
+                    payload.provider = 'groq';
+                    payload.model = 'llama-3.3-70b-versatile';
+                } else if (selectedOverride === 'groq-8b') {
+                    payload.provider = 'groq';
+                    payload.model = 'llama-3.1-8b-instant';
+                } else {
+                    payload.provider = selectedOverride;
+                }
+            }
+
+            try {
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                const data = await response.json();
+                removeTypingIndicator();
+
+                if (response.ok) {
+                    // Wait 300ms for the asynchronous database logging thread to complete saving
+                    await new Promise(resolve => setTimeout(resolve, 300));
+
+                    // Fetch logs to extract cost & token metrics from the exact db log entry
+                    const logs = await fetchDatabaseLogs();
+
+                    // Retrieve details of the last request we made
+                    let latency = data.latencyMs;
+                    let provider = data.provider;
+                    let estCost = 0.0;
+                    let tokens = 0;
+
+                    if (logs && logs.length > 0) {
+                        const lastLog = logs[logs.length - 1];
+                        estCost = lastLog.costUsd || 0;
+                        tokens = lastLog.tokenUsage || 0;
+                    }
+
+                    appendMessage(data.answer, 'system', provider, latency, estCost, tokens);
+                    
+                    // Retrieve priority and provider details to update visual map
+                    let activePriority = 'LOW';
+                    const promptLower = text.toLowerCase();
+                    
+                    // Simple heuristic classification to match RoutingService priority mapping
+                    if (promptLower.includes("code") || promptLower.includes("write a") || promptLower.includes("program") || 
+                        promptLower.includes("function") || promptLower.includes("class") || promptLower.includes("algorithm") || 
+                        promptLower.includes("solve") || promptLower.includes("calculate") || text.length > 100) {
+                        activePriority = 'HIGH';
+                    } else if (promptLower.includes("summarize") || promptLower.includes("explain") || promptLower.includes("what is") || 
+                        promptLower.includes("how to") || text.length > 35) {
+                        activePriority = 'MEDIUM';
+                    }
+
+                    // Extract actual provider from key
+                    let providerKey = provider.split(' ')[0].toLowerCase();
+                    updateRoutingVisualization(providerKey, provider, activePriority);
+
+                    // Update session metrics
+                    totalRequests++;
+                    cumulativeLatency += latency;
+                    cumulativeCost += estCost;
+
+                    metricRequests.innerText = totalRequests;
+                    metricLatency.innerText = `${Math.round(cumulativeLatency / totalRequests)} ms`;
+                    metricCost.innerText = `$${cumulativeCost.toFixed(5)}`;
+                } else {
+                    appendMessage(`Error: ${data.answer || 'Something went wrong.'}`, 'system', 'System Error');
+                }
+            } catch (err) {
+                removeTypingIndicator();
+                appendMessage(`Connection error: ${err.message}`, 'system', 'System Error');
+            }
+        }
+
+        sendBtn.addEventListener('click', sendMessage);
+        chatInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') sendMessage();
+        });
+
+        // Collapsible Bottom Console Panel Logic
+        const bottomConsole = document.getElementById('bottom-console');
+        const consoleHeaderToggle = document.getElementById('console-header-toggle');
+        const consoleToggleIcon = document.getElementById('console-toggle-icon');
+
+        consoleHeaderToggle.addEventListener('click', () => {
+            const isCollapsed = bottomConsole.classList.toggle('collapsed');
+            if (isCollapsed) {
+                consoleToggleIcon.className = 'fa-solid fa-chevron-up';
+                consoleToggleIcon.style.transform = 'rotate(0deg)';
+            } else {
+                consoleToggleIcon.className = 'fa-solid fa-chevron-down';
+                consoleToggleIcon.style.transform = 'rotate(180deg)';
+            }
+        });
+
+        // Initialize logs
+        fetchDatabaseLogs();
+
+        // Auto-update database audit logs table every 3 seconds
+        setInterval(fetchDatabaseLogs, 3000);
+    </script>
+</body>
+</html>
