@@ -1,15 +1,21 @@
 package com.llm.nexusai_gateway.Provider;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
+import reactor.util.retry.Retry;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
 @Service
 public class GroqProvider implements LlmProvider {
+
+    private static final Logger log = LoggerFactory.getLogger(GroqProvider.class);
 
     @Value("${groq.api.key}")
     private String apiKey;
@@ -28,7 +34,7 @@ public class GroqProvider implements LlmProvider {
     @Override
     public Mono<ProviderResponse> chat(String message, String modelName) {
         String activeModel = (modelName != null && !modelName.isBlank()) ? modelName : defaultModel;
-        System.out.println("[PROVIDER CALL] Executing actual Groq chat call for model: " + activeModel);
+        log.info("[PROVIDER CALL] Executing Groq chat for model: {}", activeModel);
 
         if (apiKey == null || apiKey.isBlank() || "your_groq_api_key_here".equals(apiKey)) {
             if (mockEnabled) {
@@ -55,7 +61,7 @@ public class GroqProvider implements LlmProvider {
                 .bodyValue(body)
                 .retrieve()
                 .bodyToMono(Map.class)
-                .retry(2)
+                .retryWhen(Retry.backoff(2, Duration.ofSeconds(1)))
                 .map(response -> {
                     try {
                         List<Map<String, Object>> choices = (List<Map<String, Object>>) response.get("choices");
@@ -72,6 +78,14 @@ public class GroqProvider implements LlmProvider {
                     } catch (Exception e) {
                         throw new RuntimeException("Failed to parse Groq response: " + e.getMessage(), e);
                     }
+                })
+                .onErrorResume(e -> {
+                    if (mockEnabled) {
+                        log.warn("Groq real call failed (API key may be invalid or unpaid). Falling back to mock. Error: {}", e.getMessage());
+                        String text = "[MOCK Groq " + activeModel + "] Here is a simulated response to: \"" + message + "\"";
+                        return Mono.just(new ProviderResponse(text, estimateTokens(message), estimateTokens(text)));
+                    }
+                    return Mono.error(e);
                 });
     }
 

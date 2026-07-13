@@ -1,15 +1,21 @@
 package com.llm.nexusai_gateway.Provider;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
+import reactor.util.retry.Retry;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
 @Service
 public class GeminiProvider implements LlmProvider {
+
+    private static final Logger log = LoggerFactory.getLogger(GeminiProvider.class);
 
     @Value("${gemini.api.key}")
     private String apiKey;
@@ -28,7 +34,7 @@ public class GeminiProvider implements LlmProvider {
     @Override
     public Mono<ProviderResponse> chat(String message, String modelName) {
         String activeModel = (modelName != null && !modelName.isBlank()) ? modelName : model;
-        System.out.println("[PROVIDER CALL] Executing actual Gemini chat call for model: " + activeModel);
+        log.info("[PROVIDER CALL] Executing Gemini chat for model: {}", activeModel);
         if (apiKey == null || apiKey.isBlank() || "your_gemini_api_key_here".equals(apiKey)) {
             if (mockEnabled) {
                 String text = "[MOCK Gemini " + activeModel + "] Here is a simulated response to: \"" + message + "\"";
@@ -61,7 +67,7 @@ public class GeminiProvider implements LlmProvider {
                 .bodyValue(body)
                 .retrieve()
                 .bodyToMono(Map.class)
-                .retry(2)
+                .retryWhen(Retry.backoff(2, Duration.ofSeconds(1)))
                 .map(response -> {
                     try {
                         List<Map> candidates = (List<Map>) response.get("candidates");
@@ -89,6 +95,14 @@ public class GeminiProvider implements LlmProvider {
                     } catch (Exception e) {
                         throw new RuntimeException("Failed to parse Gemini response: " + e.getMessage(), e);
                     }
+                })
+                .onErrorResume(e -> {
+                    if (mockEnabled) {
+                        log.warn("Gemini real call failed (API key may be invalid or unpaid). Falling back to mock. Error: {}", e.getMessage());
+                        String text = "[MOCK Gemini " + activeModel + "] Here is a simulated response to: \"" + message + "\"";
+                        return Mono.just(new ProviderResponse(text, estimateTokens(message), estimateTokens(text)));
+                    }
+                    return Mono.error(e);
                 });
     }
 

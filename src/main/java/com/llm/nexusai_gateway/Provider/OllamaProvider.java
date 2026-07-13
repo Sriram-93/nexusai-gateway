@@ -17,6 +17,9 @@ public class OllamaProvider implements LlmProvider {
     @Value("${ollama.model}")
     private String defaultModel;
 
+    @Value("${gateway.mock-missing-providers:true}")
+    private boolean mockEnabled;
+
     private final WebClient webClient = WebClient.create();
 
     @Override
@@ -54,6 +57,14 @@ public class OllamaProvider implements LlmProvider {
                     } catch (Exception e) {
                         throw new RuntimeException("Failed to parse Ollama response: " + e.getMessage(), e);
                     }
+                })
+                .onErrorResume(e -> {
+                    if (mockEnabled) {
+                        org.slf4j.LoggerFactory.getLogger(OllamaProvider.class).warn("Ollama real call failed (local instance might not be running). Falling back to mock. Error: {}", e.getMessage());
+                        String text = "[MOCK Ollama " + activeModel + "] Here is a simulated response to: \"" + message + "\"";
+                        return Mono.just(new ProviderResponse(text, estimateTokens(message), estimateTokens(text)));
+                    }
+                    return Mono.error(e);
                 });
     }
 

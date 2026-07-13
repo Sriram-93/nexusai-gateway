@@ -71,6 +71,14 @@ public class OpenAiProvider implements LlmProvider {
                     } catch (Exception e) {
                         throw new RuntimeException("Failed to parse OpenAI response: " + e.getMessage(), e);
                     }
+                })
+                .onErrorResume(e -> {
+                    if (mockEnabled) {
+                        org.slf4j.LoggerFactory.getLogger(OpenAiProvider.class).warn("OpenAI real call failed (API key may be invalid or unpaid). Falling back to mock. Error: {}", e.getMessage());
+                        String text = "[MOCK OpenAI " + activeModel + "] Here is a simulated response to: \"" + message + "\"";
+                        return Mono.just(new ProviderResponse(text, estimateTokens(message), estimateTokens(text)));
+                    }
+                    return Mono.error(e);
                 });
     }
 

@@ -25,7 +25,12 @@ public class ResponseCacheService {
      */
     public Mono<String> getCachedResponse(String model, String prompt) {
         String key = buildCacheKey(model, prompt);
-        return redisTemplate.opsForValue().get(key);
+        return redisTemplate.opsForValue().get(key)
+                .onErrorResume(e -> {
+                    org.slf4j.LoggerFactory.getLogger(ResponseCacheService.class)
+                        .warn("Redis connection failed in getCachedResponse; bypassing cache: {}", e.getMessage());
+                    return Mono.empty();
+                });
     }
 
     /**
@@ -33,7 +38,13 @@ public class ResponseCacheService {
      */
     public Mono<Void> cacheResponse(String model, String prompt, String response) {
         String key = buildCacheKey(model, prompt);
-        return redisTemplate.opsForValue().set(key, response, CACHE_TTL).then();
+        return redisTemplate.opsForValue().set(key, response, CACHE_TTL)
+                .onErrorResume(e -> {
+                    org.slf4j.LoggerFactory.getLogger(ResponseCacheService.class)
+                        .warn("Redis connection failed in cacheResponse; bypassing cache: {}", e.getMessage());
+                    return Mono.just(false);
+                })
+                .then();
     }
 
     /**
@@ -41,7 +52,12 @@ public class ResponseCacheService {
      */
     public Mono<Boolean> evict(String model, String prompt) {
         String key = buildCacheKey(model, prompt);
-        return redisTemplate.opsForValue().delete(key);
+        return redisTemplate.opsForValue().delete(key)
+                .onErrorResume(e -> {
+                    org.slf4j.LoggerFactory.getLogger(ResponseCacheService.class)
+                        .warn("Redis connection failed in evict; ignoring: {}", e.getMessage());
+                    return Mono.just(false);
+                });
     }
 
     /**
@@ -50,15 +66,24 @@ public class ResponseCacheService {
     public Mono<Void> clearCache() {
         return redisTemplate.keys(CACHE_PREFIX + "*")
                 .flatMap(redisTemplate::delete)
+                .onErrorResume(e -> {
+                    org.slf4j.LoggerFactory.getLogger(ResponseCacheService.class)
+                        .warn("Redis connection failed in clearCache; ignoring: {}", e.getMessage());
+                    return Mono.empty();
+                })
                 .then();
     }
 
     /**
-     * Compute a unique Redis cache key using SHA-256 hash of the prompt.
+     * Compute a unique Redis cache key using SHA-256 hash of model + prompt combined.
+     *
+     * Fix 3: The key includes modelName to prevent cross-provider cache collisions.
+     * Gemini and Groq return different answers to the same prompt — hashing prompt
+     * alone would serve one provider's cached answer to a request routed to another.
      */
     private String buildCacheKey(String model, String prompt) {
         String sanitizedModel = model.toLowerCase().replaceAll("[^a-zA-Z0-9.-]", "_");
-        String promptHash = sha256(prompt);
+        String promptHash = sha256(model + ":" + prompt);   // model name is part of the hash
         return CACHE_PREFIX + sanitizedModel + ":" + promptHash;
     }
 
