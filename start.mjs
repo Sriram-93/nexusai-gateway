@@ -1,0 +1,1 @@
+import { serve } from '@hono/node-server'; import app from './frontend/.output/server/index.mjs'; serve({ fetch: app.default.fetch, port: 8080 }, (info) => { console.log('Listening on', info.port); });
