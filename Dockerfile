@@ -18,7 +18,7 @@ RUN mvn dependency:go-offline
 # Copy the backend source
 COPY src ./src
 # Copy the built frontend into the expected directory so Maven can bundle it
-COPY --from=frontend-builder /app/frontend/.output/public ./frontend/.output/public
+COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 
 # Build the final JAR
 RUN mvn clean package -DskipTests
@@ -28,4 +28,4 @@ FROM eclipse-temurin:21-jre
 WORKDIR /app
 COPY --from=backend-builder /app/target/nexusai-gateway-0.0.1-SNAPSHOT.jar app.jar
 EXPOSE 8080
-ENTRYPOINT ["java", "-Xmx300m", "-XX:MaxMetaspaceSize=128m", "-XX:+UseSerialGC", "-Djava.security.egd=file:/dev/./urandom", "-jar", "app.jar", "--server.port=8080"]
+ENTRYPOINT ["java", "-Xmx300m", "-XX:MaxMetaspaceSize=128m", "-XX:+UseSerialGC", "-Djava.security.egd=file:/dev/./urandom", "-jar", "app.jar"]
