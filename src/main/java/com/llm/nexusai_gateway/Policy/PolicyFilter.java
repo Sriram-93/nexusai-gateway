@@ -24,7 +24,7 @@ public class PolicyFilter {
 
     private static final Logger log = LoggerFactory.getLogger(PolicyFilter.class);
 
-    @Value("${nexusai.policy.approved-providers:gemini,groq}")
+    @Value("${nexusai.policy.approved-providers:}")
     private String approvedProvidersStr;
 
     @Value("${nexusai.policy.blocked-providers:}")

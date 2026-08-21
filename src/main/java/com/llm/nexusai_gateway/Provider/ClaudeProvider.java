@@ -8,8 +8,13 @@ import reactor.core.publisher.Mono;
 import java.util.List;
 import java.util.Map;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 @Service
 public class ClaudeProvider implements LlmProvider {
+
+    private static final Logger log = LoggerFactory.getLogger(ClaudeProvider.class);
 
     @Value("${claude.api.key}")
     private String apiKey;
@@ -20,13 +25,14 @@ public class ClaudeProvider implements LlmProvider {
     @Value("${claude.model}")
     private String defaultModel;
 
-    @Value("${gateway.mock-missing-providers:true}")
+    @Value("${gateway.mock-missing-providers:false}")
     private boolean mockEnabled;
 
     private final WebClient webClient = WebClient.create();
 
     @Override
-    public Mono<ProviderResponse> chat(String message, String modelName) {
+    public Mono<ProviderResponse> chat(String providerSlug, String message, String modelName) {
+        log.info("[PROVIDER CALL] Claude -> model: {}", modelName);
         if (apiKey == null || apiKey.isBlank() || "your_claude_api_key_here".equals(apiKey)) {
             if (mockEnabled) {
                 String activeModel = (modelName != null && !modelName.isBlank()) ? modelName : defaultModel;

@@ -15,5 +15,8 @@ public enum RoutingStrategy {
     WEIGHTED,
 
     /** Proposed method: Contextual bandit with online learning (LinUCB) */
-    ADAPTIVE
+    ADAPTIVE,
+
+    /** Research novelty: Federated multi-tenant contextual bandit with reward decomposition */
+    FEDERATED
 }

@@ -8,8 +8,13 @@ import reactor.core.publisher.Mono;
 import java.util.List;
 import java.util.Map;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 @Service
 public class OllamaProvider implements LlmProvider {
+
+    private static final Logger log = LoggerFactory.getLogger(OllamaProvider.class);
 
     @Value("${ollama.api.url}")
     private String apiUrl;
@@ -17,13 +22,14 @@ public class OllamaProvider implements LlmProvider {
     @Value("${ollama.model}")
     private String defaultModel;
 
-    @Value("${gateway.mock-missing-providers:true}")
+    @Value("${gateway.mock-missing-providers:false}")
     private boolean mockEnabled;
 
     private final WebClient webClient = WebClient.create();
 
     @Override
-    public Mono<ProviderResponse> chat(String message, String modelName) {
+    public Mono<ProviderResponse> chat(String providerSlug, String message, String modelName) {
+        log.info("[PROVIDER CALL] Ollama -> model: {}", modelName);
         String activeModel = (modelName != null && !modelName.isBlank()) ? modelName : defaultModel;
 
         Map<String, Object> body = Map.of(

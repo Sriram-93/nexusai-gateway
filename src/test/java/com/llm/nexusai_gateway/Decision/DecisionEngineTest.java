@@ -31,7 +31,8 @@ public class DecisionEngineTest {
             false,
             "user123",
             "tenant456",
-            Map.of()
+            Map.of(),
+            new float[384]
         );
     }
 
@@ -58,7 +59,8 @@ public class DecisionEngineTest {
             false,
             "user123",
             "tenant456",
-            Map.of()
+            Map.of(),
+            new float[384]
         );
         ExplainedDecision creativeDecision = engine.select(creativeContext, eligible);
         assertEquals("groq", creativeDecision.selectedProvider());
@@ -98,7 +100,7 @@ public class DecisionEngineTest {
 
     @Test
     public void testLinUcbDecisionEngine() {
-        LinUcbDecisionEngine engine = new LinUcbDecisionEngine(1.0, reputationService);
+        LinUcbDecisionEngine engine = new LinUcbDecisionEngine(1.0, reputationService, null, null);
         List<String> eligible = List.of(
             "gemini:gemini-2.5-flash",
             "groq:llama-3.3-70b-versatile"
@@ -115,7 +117,7 @@ public class DecisionEngineTest {
         engine.update(context, "groq:llama-3.3-70b-versatile", 0.0);
 
         // Under pure exploitation (low alpha), gemini should score higher now
-        LinUcbDecisionEngine exploitativeEngine = new LinUcbDecisionEngine(0.01, reputationService);
+        LinUcbDecisionEngine exploitativeEngine = new LinUcbDecisionEngine(0.01, reputationService, null, null);
         exploitativeEngine.update(context, "gemini:gemini-2.5-flash", 1.0);
         exploitativeEngine.update(context, "groq:llama-3.3-70b-versatile", 0.0);
 

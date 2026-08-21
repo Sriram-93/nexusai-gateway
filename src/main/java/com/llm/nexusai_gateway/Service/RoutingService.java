@@ -9,27 +9,33 @@ import com.llm.nexusai_gateway.Model.RouteDecision;
 @Service
 public class RoutingService {
 
-    @Value("${routing.model.high.provider:gemini}")
+    @Value("${routing.model.high.provider:}")
     private String highProvider;
 
-    @Value("${routing.model.high.name:gemini-2.5-flash}")
+    @Value("${routing.model.high.name:}")
     private String highModel;
 
-    @Value("${routing.model.medium.provider:groq}")
+    @Value("${routing.model.medium.provider:}")
     private String mediumProvider;
 
-    @Value("${routing.model.medium.name:llama-3.3-70b-versatile}")
+    @Value("${routing.model.medium.name:}")
     private String mediumModel;
 
-    @Value("${routing.model.low.provider:groq}")
+    @Value("${routing.model.low.provider:}")
     private String lowProvider;
 
-    @Value("${routing.model.low.name:llama-3.1-8b-instant}")
+    @Value("${routing.model.low.name:}")
     private String lowModel;
+
+    private final com.llm.nexusai_gateway.Context.ContextExtractor contextExtractor;
+
+    public RoutingService(com.llm.nexusai_gateway.Context.ContextExtractor contextExtractor) {
+        this.contextExtractor = contextExtractor;
+    }
 
     public RouteDecision selectRoute(ChatRequest request) {
         // If provider is explicitly specified in request, respect it
-        Priority priority = request.getPriority() != null ? request.getPriority() : determinePriority(request.getMessage());
+        Priority priority = request.getPriority() != null ? request.getPriority() : determinePriority(request);
         if (request.getProvider() != null && !request.getProvider().isBlank()) {
             return new RouteDecision(request.getProvider().toLowerCase(), request.getModel(), priority);
         }
@@ -45,29 +51,23 @@ public class RoutingService {
         }
     }
 
-    private Priority determinePriority(String message) {
-        if (message == null || message.isBlank()) {
+    private Priority determinePriority(ChatRequest request) {
+        if (request.getMessage() == null || request.getMessage().isBlank()) {
             return Priority.LOW;
         }
 
-        String cleanMsg = message.toLowerCase().trim();
-
-        // 1. HIGH Complexity Keywords (Coding, Algorithms, Math, Long prompts)
-        if (cleanMsg.contains("code") || cleanMsg.contains("write a") || cleanMsg.contains("program") || 
-            cleanMsg.contains("function") || cleanMsg.contains("class") || cleanMsg.contains("algorithm") || 
-            cleanMsg.contains("solve") || cleanMsg.contains("calculate") || cleanMsg.contains("explain the difference") || 
-            cleanMsg.contains("design") || cleanMsg.contains("architect") || cleanMsg.length() > 100) {
-            return Priority.HIGH;
+        try {
+            com.llm.nexusai_gateway.Context.RequestContext ctx = contextExtractor.extract(request).block();
+            if (ctx == null) return Priority.LOW;
+            
+            // Map the semantic category to priority
+            return switch (ctx.taskCategory()) {
+                case CODE, REASONING -> Priority.HIGH;
+                case CREATIVE, FACTUAL -> Priority.MEDIUM;
+                case CONVERSATION -> Priority.LOW;
+            };
+        } catch (Exception e) {
+            return Priority.LOW;
         }
-
-        // 2. MEDIUM Complexity Keywords (General Questions, Summarization, Explanations)
-        if (cleanMsg.contains("summarize") || cleanMsg.contains("explain") || cleanMsg.contains("what is") || 
-            cleanMsg.contains("how to") || cleanMsg.contains("why") || cleanMsg.contains("joke") || 
-            cleanMsg.length() > 35) {
-            return Priority.MEDIUM;
-        }
-
-        // 3. LOW Complexity (Greetings, Simple QA, Fast answers)
-        return Priority.LOW;
     }
 }

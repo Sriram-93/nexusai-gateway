@@ -78,11 +78,11 @@ public class RewardCalculator {
      * @return Reward value in [0.0, 1.0]
      */
     public double calculate(QualityScore quality, long latencyMs, double costUsd, boolean success) {
-        // All components individually normalized to [0,1]
-        double availabilityScore = success ? 1.0 : 0.0;
-        double qualityScore      = success ? quality.compositeScore() : 0.0;
-        double latencyScore      = Math.max(0.0, 1.0 - (latencyMs / MAX_LATENCY_MS));
-        double costScore         = Math.max(0.0, 1.0 - (costUsd   / MAX_COST_USD));
+        double[] components = calculateComponents(quality, latencyMs, costUsd, success);
+        double qualityScore = components[0];
+        double latencyScore = components[1];
+        double costScore = components[2];
+        double availabilityScore = components[3];
 
         // Retrieve weights for the active tier
         double wq = weightQuality();
@@ -102,6 +102,18 @@ public class RewardCalculator {
                   activeTier, reward, qualityScore, availabilityScore, latencyScore, costScore);
 
         return reward;
+    }
+
+    /**
+     * Calculate individual normalized reward components for Phase 2 scalarization.
+     * @return [QualityScore, LatencyScore, CostScore, AvailabilityScore]
+     */
+    public double[] calculateComponents(QualityScore quality, long latencyMs, double costUsd, boolean success) {
+        double availabilityScore = success ? 1.0 : 0.0;
+        double qualityScore      = success ? quality.compositeScore() : 0.0;
+        double latencyScore      = Math.max(0.0, 1.0 - (latencyMs / MAX_LATENCY_MS));
+        double costScore         = Math.max(0.0, 1.0 - (costUsd   / MAX_COST_USD));
+        return new double[]{qualityScore, latencyScore, costScore, availabilityScore};
     }
 
     /** Returns the active tier name for logging/explainability. */

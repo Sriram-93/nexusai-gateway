@@ -25,20 +25,52 @@ public class ChatController {
     private final LoggingService loggingService;
     private final ResponseCacheService responseCacheService;
     private final com.llm.nexusai_gateway.Reputation.ReputationService reputationService;
+    private final com.llm.nexusai_gateway.Agent.AgentOrchestrationService agentOrchestrationService;
 
     public ChatController(ChatOrchestrationService orchestrationService,
                           LoggingService loggingService,
                           ResponseCacheService responseCacheService,
-                          com.llm.nexusai_gateway.Reputation.ReputationService reputationService) {
+                          com.llm.nexusai_gateway.Reputation.ReputationService reputationService,
+                          com.llm.nexusai_gateway.Agent.AgentOrchestrationService agentOrchestrationService) {
         this.orchestrationService = orchestrationService;
         this.loggingService = loggingService;
         this.responseCacheService = responseCacheService;
         this.reputationService = reputationService;
+        this.agentOrchestrationService = agentOrchestrationService;
     }
 
     @PostMapping("/chat")
-    public Mono<ChatResponse> chat(@RequestBody ChatRequest request) {
-        return orchestrationService.process(request);
+    public Mono<ChatResponse> chat(@RequestBody ChatRequest request, org.springframework.web.server.ServerWebExchange exchange) {
+        return Mono.deferContextual(ctx -> {
+            if (ctx.hasKey(com.llm.nexusai_gateway.Security.GatewaySecurityFilter.TENANT_CONTEXT_KEY)) {
+                com.llm.nexusai_gateway.Tenant.TenantConfig tenant = 
+                    ctx.get(com.llm.nexusai_gateway.Security.GatewaySecurityFilter.TENANT_CONTEXT_KEY);
+                request.setTenantId(tenant.getTenantId());
+            }
+            if (exchange.getAttribute("auth_user_id") != null) {
+                request.setUserId(exchange.getAttribute("auth_user_id"));
+            } else {
+                request.setUserId("anonymous");
+            }
+            return orchestrationService.process(request);
+        });
+    }
+
+    @PostMapping("/agent/chat")
+    public Mono<com.llm.nexusai_gateway.Agent.AgentChatResponse> agentChat(@RequestBody ChatRequest request, org.springframework.web.server.ServerWebExchange exchange) {
+        return Mono.deferContextual(ctx -> {
+            if (ctx.hasKey(com.llm.nexusai_gateway.Security.GatewaySecurityFilter.TENANT_CONTEXT_KEY)) {
+                com.llm.nexusai_gateway.Tenant.TenantConfig tenant = 
+                    ctx.get(com.llm.nexusai_gateway.Security.GatewaySecurityFilter.TENANT_CONTEXT_KEY);
+                request.setTenantId(tenant.getTenantId());
+            }
+            if (exchange.getAttribute("auth_user_id") != null) {
+                request.setUserId(exchange.getAttribute("auth_user_id"));
+            } else {
+                request.setUserId("anonymous");
+            }
+            return agentOrchestrationService.process(request);
+        });
     }
 
     @GetMapping("/reputations")

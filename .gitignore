@@ -35,4 +35,8 @@ build/
 ### Secrets ###
 .env
 
-extras
+extras/
+
+### Databases & Logs ###
+*.db
+*.log

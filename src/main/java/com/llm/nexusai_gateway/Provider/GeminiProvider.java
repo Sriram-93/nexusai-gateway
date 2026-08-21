@@ -21,29 +21,29 @@ public class GeminiProvider implements LlmProvider {
     private String apiKey;
 
     @Value("${gemini.api.url}")
-    private String apiUrl;
+    private String apiBaseUrl;
 
-    @Value("${gemini.model}")
-    private String model;
-
-    @Value("${gateway.mock-missing-providers:true}")
+    @Value("${gateway.mock-missing-providers:false}")
     private boolean mockEnabled;
 
     private final WebClient webClient = WebClient.create();
 
     @Override
-    public Mono<ProviderResponse> chat(String message, String modelName) {
-        String activeModel = (modelName != null && !modelName.isBlank()) ? modelName : model;
-        log.info("[PROVIDER CALL] Executing Gemini chat for model: {}", activeModel);
+    public Mono<ProviderResponse> chat(String providerSlug, String message, String modelName) {
+        if (modelName == null || modelName.isBlank()) {
+            return Mono.error(new IllegalArgumentException("GeminiProvider requires a non-null modelName from ModelRegistry."));
+        }
+        log.info("[PROVIDER CALL] Executing Gemini chat for model: {}", modelName);
         if (apiKey == null || apiKey.isBlank() || "your_gemini_api_key_here".equals(apiKey)) {
             if (mockEnabled) {
-                String text = "[MOCK Gemini " + activeModel + "] Here is a simulated response to: \"" + message + "\"";
+                String text = "[MOCK Gemini " + modelName + "] Here is a simulated response to: \"" + message + "\"";
                 return Mono.just(new ProviderResponse(text, estimateTokens(message), estimateTokens(text)));
             }
             return Mono.error(new IllegalArgumentException("Gemini API key is not configured."));
         }
 
-        // Construct the payload for the Gemini API:
+        // Build the per-model URL dynamically from the base URL template
+        String resolvedUrl = apiBaseUrl + "/" + modelName + ":generateContent?key=" + apiKey;
         Map<String, Object> body = Map.of(
                 "contents", List.of(
                         Map.of("parts", List.of(
@@ -52,17 +52,8 @@ public class GeminiProvider implements LlmProvider {
                 )
         );
 
-        // Dynamically resolve URL if a specific model was requested
-        String resolvedUrl = apiUrl;
-        if (modelName != null && !modelName.isBlank() && !modelName.equalsIgnoreCase(this.model)) {
-            resolvedUrl = apiUrl.replace(this.model, modelName);
-        }
-
-        // Google Generative AI REST API requires the API key to be passed as a query parameter
-        String fullUrl = resolvedUrl + "?key=" + apiKey;
-
         return webClient.post()
-                .uri(fullUrl)
+                .uri(resolvedUrl)
                 .header("Content-Type", "application/json")
                 .bodyValue(body)
                 .retrieve()
@@ -99,7 +90,7 @@ public class GeminiProvider implements LlmProvider {
                 .onErrorResume(e -> {
                     if (mockEnabled) {
                         log.warn("Gemini real call failed (API key may be invalid or unpaid). Falling back to mock. Error: {}", e.getMessage());
-                        String text = "[MOCK Gemini " + activeModel + "] Here is a simulated response to: \"" + message + "\"";
+                        String text = "[MOCK Gemini " + modelName + "] Here is a simulated response to: \"" + message + "\"";
                         return Mono.just(new ProviderResponse(text, estimateTokens(message), estimateTokens(text)));
                     }
                     return Mono.error(e);

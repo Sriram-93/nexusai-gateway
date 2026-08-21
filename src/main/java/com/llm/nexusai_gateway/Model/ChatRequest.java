@@ -63,7 +63,31 @@ public class ChatRequest {
         return model;
     }
 
-    public void setModel(String model) {
-        this.model = model;
+    private String pipelineName;
+    private java.util.List<String> customSteps;
+    private com.llm.nexusai_gateway.Routing.RoutingPolicy routingPolicy;
+
+    public String getPipelineName() {
+        return pipelineName;
+    }
+
+    public void setPipelineName(String pipelineName) {
+        this.pipelineName = pipelineName;
+    }
+
+    public java.util.List<String> getCustomSteps() {
+        return customSteps;
+    }
+
+    public void setCustomSteps(java.util.List<String> customSteps) {
+        this.customSteps = customSteps;
+    }
+
+    public com.llm.nexusai_gateway.Routing.RoutingPolicy getRoutingPolicy() {
+        return routingPolicy;
+    }
+
+    public void setRoutingPolicy(com.llm.nexusai_gateway.Routing.RoutingPolicy routingPolicy) {
+        this.routingPolicy = routingPolicy;
     }
 }

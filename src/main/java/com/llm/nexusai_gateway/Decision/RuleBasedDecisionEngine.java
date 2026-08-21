@@ -19,29 +19,33 @@ public class RuleBasedDecisionEngine implements DecisionEngine {
 
     private static final Logger log = LoggerFactory.getLogger(RuleBasedDecisionEngine.class);
 
-    private final Map<TaskCategory, String> taskProviderMap;
     private final ReputationService reputationService;
 
     public RuleBasedDecisionEngine(ReputationService reputationService) {
         this.reputationService = reputationService;
-
-        // Original rule-based mapping (equivalent to old RoutingService)
-        this.taskProviderMap = Map.of(
-            TaskCategory.CODE, "gemini:gemini-2.5-flash",
-            TaskCategory.REASONING, "gemini:gemini-2.5-flash",
-            TaskCategory.CREATIVE, "groq:llama-3.3-70b-versatile",
-            TaskCategory.FACTUAL, "groq:llama-3.3-70b-versatile",
-            TaskCategory.CONVERSATION, "groq:llama-3.1-8b-instant"
-        );
     }
 
     @Override
     public ExplainedDecision select(RequestContext context, List<String> eligibleProviders) {
-        String mappedArm = taskProviderMap.getOrDefault(context.taskCategory(), "groq:llama-3.1-8b-instant");
-
-        // Fallback if mapped arm is not eligible
-        String bestArm = eligibleProviders.contains(mappedArm)
-            ? mappedArm : eligibleProviders.get(0);
+        if (eligibleProviders == null || eligibleProviders.isEmpty()) {
+            throw new IllegalStateException("No eligible providers available for routing.");
+        }
+        // Dynamically select the best available arm from eligibleProviders
+        String bestArm = eligibleProviders.get(0);
+        for (String arm : eligibleProviders) {
+            String lower = arm.toLowerCase();
+            if (context.taskCategory() == TaskCategory.CODE || context.taskCategory() == TaskCategory.REASONING) {
+                if (lower.contains("pro") || lower.contains("70b") || lower.contains("gpt-4")) {
+                    bestArm = arm;
+                    break;
+                }
+            } else if (context.taskCategory() == TaskCategory.CONVERSATION) {
+                if (lower.contains("flash") || lower.contains("8b") || lower.contains("mini")) {
+                    bestArm = arm;
+                    break;
+                }
+            }
+        }
 
         String finalProvider = bestArm.contains(":") ? bestArm.split(":")[0] : bestArm;
         String finalModel = bestArm.contains(":") ? bestArm.split(":")[1] : "default";

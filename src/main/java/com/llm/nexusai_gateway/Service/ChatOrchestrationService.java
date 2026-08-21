@@ -4,6 +4,8 @@ import com.llm.nexusai_gateway.Context.ContextExtractor;
 import com.llm.nexusai_gateway.Context.RequestContext;
 import com.llm.nexusai_gateway.Decision.DecisionEngine;
 import com.llm.nexusai_gateway.Decision.ExplainedDecision;
+import com.llm.nexusai_gateway.Decision.RoutingEngineManager;
+import com.llm.nexusai_gateway.Decision.RoutingStrategy;
 import com.llm.nexusai_gateway.Evaluation.QualityEvaluator;
 import com.llm.nexusai_gateway.Evaluation.QualityScore;
 import com.llm.nexusai_gateway.Model.ChatRequest;
@@ -14,6 +16,7 @@ import com.llm.nexusai_gateway.Provider.LlmProvider;
 import com.llm.nexusai_gateway.Provider.ProviderRegistry;
 import com.llm.nexusai_gateway.Provider.ProviderResponse;
 import com.llm.nexusai_gateway.Reputation.ReputationService;
+import com.llm.nexusai_gateway.Provider.ModelRegistry;
 import com.llm.nexusai_gateway.Reward.RewardCalculator;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
@@ -44,10 +47,11 @@ public class ChatOrchestrationService {
 
     private final ContextExtractor contextExtractor;
     private final PolicyFilter policyFilter;
-    private final DecisionEngine decisionEngine;
+    private final RoutingEngineManager decisionEngine;
     private final ProviderRegistry providerRegistry;
     private final CircuitBreakerRegistry circuitBreakerRegistry;
     private final QualityEvaluator qualityEvaluator;
+    private final ModelRegistry modelRegistry;
     private final RewardCalculator rewardCalculator;
     private final ReputationService reputationService;
     private final LoggingService loggingService;
@@ -60,7 +64,7 @@ public class ChatOrchestrationService {
     public ChatOrchestrationService(
             ContextExtractor contextExtractor,
             PolicyFilter policyFilter,
-            DecisionEngine decisionEngine,
+            RoutingEngineManager decisionEngine,
             ProviderRegistry providerRegistry,
             CircuitBreakerRegistry circuitBreakerRegistry,
             QualityEvaluator qualityEvaluator,
@@ -68,7 +72,8 @@ public class ChatOrchestrationService {
             ReputationService reputationService,
             LoggingService loggingService,
             ResponseCacheService responseCacheService,
-            RateLimitingService rateLimitingService) {
+            RateLimitingService rateLimitingService,
+            ModelRegistry modelRegistry) {
         this.contextExtractor = contextExtractor;
         this.policyFilter = policyFilter;
         this.decisionEngine = decisionEngine;
@@ -80,6 +85,7 @@ public class ChatOrchestrationService {
         this.loggingService = loggingService;
         this.responseCacheService = responseCacheService;
         this.rateLimitingService = rateLimitingService;
+        this.modelRegistry = modelRegistry;
     }
 
     /**
@@ -89,15 +95,10 @@ public class ChatOrchestrationService {
         long start = System.currentTimeMillis();
 
         // Step 1: Context Extraction
-        RequestContext context = contextExtractor.extract(request);
+        return contextExtractor.extract(request).flatMap(context -> {
 
-        // Step 2: Policy Filter - Now tracking MODELS as arms instead of just providers
-        List<String> allProviders = List.of(
-            "gemini:gemini-2.5-flash",
-            "gemini:gemini-2.5-pro",
-            "groq:llama-3.3-70b-versatile",
-            "groq:llama-3.1-8b-instant"
-        );
+        // Step 2: Build eligible arm list from the registry — no hardcoded models.
+        List<String> allProviders = modelRegistry.getEnabledArmKeys();
 
         List<String> eligibleProviders = policyFilter.filter(allProviders, context);
 
@@ -106,9 +107,12 @@ public class ChatOrchestrationService {
         if (request.getProvider() != null && !request.getProvider().isBlank()) {
             String reqProv = request.getProvider().toLowerCase();
             if ("rule_based".equals(reqProv)) {
+                // Per-request override: temporarily route via rule-based (does not change global state)
                 decision = new com.llm.nexusai_gateway.Decision.RuleBasedDecisionEngine(reputationService).select(context, eligibleProviders);
             } else if ("weighted".equals(reqProv)) {
-                decision = new com.llm.nexusai_gateway.Decision.WeightedDecisionEngine(java.util.Map.of("gemini", 0.6, "groq", 0.4), reputationService).select(context, eligibleProviders);
+                // Per-request override: switch to WEIGHTED then select (no hardcoded weights)
+                decisionEngine.switchStrategy(RoutingStrategy.WEIGHTED, null);
+                decision = decisionEngine.select(context, eligibleProviders);
             } else if ("adaptive".equals(reqProv)) {
                 decision = decisionEngine.select(context, eligibleProviders);
             } else {
@@ -159,32 +163,34 @@ public class ChatOrchestrationService {
             })
             .switchIfEmpty(
                 // Cache MISS → Execute provider call
-                getCollapsedChat(provider, request.getMessage(), decision.selectedModel(), cb)
+                getCollapsedChat(provider, decision.selectedProvider(), request.getMessage(), decision.selectedModel(), cb)
                     .flatMap(response -> responseCacheService.cacheResponse(
                         decision.selectedModel(), request.getMessage(), response.content())
                         .thenReturn(response))
-                    .map(response -> {
+                    .flatMap(response -> {
                         long latency = System.currentTimeMillis() - start;
                         double costUsd = estimateCost(decision.selectedProvider(), decision.selectedModel(),
                                                       response.inputTokens(), response.outputTokens());
 
                         // Step 5-8: THE CLOSED LOOP — Quality → Reward → Reputation → Learning
-                        double reward = closeFeedbackLoopWithReward(context, decision,
-                            request.getMessage(), response.content(), latency, costUsd, true);
+                        return closeFeedbackLoopWithReward(context, decision,
+                            request.getMessage(), response.content(), latency, costUsd, true)
+                            .map(reward -> {
+                                logToDb(context, request, response.content(), decision, latency, "SUCCESS",
+                                        response.inputTokens(), response.outputTokens());
 
-                        logToDb(request, response.content(), decision, latency, "SUCCESS",
-                                response.inputTokens(), response.outputTokens());
-
-                        ChatResponse chatResponse = new ChatResponse(response.content(),
-                            decision.selectedProvider() + " (" + decision.selectedModel() + ")", latency);
-                        chatResponse.setActiveEngine(decision.strategy().name());
-                        chatResponse.setRoutingReason(decision.reason());
-                        chatResponse.setRewardScore(reward);
-                        chatResponse.setArmScores(decision.armScores());
-                        return chatResponse;
+                                ChatResponse chatResponse = new ChatResponse(response.content(),
+                                    decision.selectedProvider() + " (" + decision.selectedModel() + ")", latency);
+                                chatResponse.setActiveEngine(decision.strategy().name());
+                                chatResponse.setRoutingReason(decision.reason());
+                                chatResponse.setRewardScore(reward);
+                                chatResponse.setArmScores(decision.armScores());
+                                return chatResponse;
+                            });
                     })
                     .onErrorResume(e -> handleFailureWithFallback(e, request, context, decision, start))
             );
+        });
     }
 
     /**
@@ -195,34 +201,36 @@ public class ChatOrchestrationService {
      *
      * Returns the computed reward so it can be included in the ChatResponse (Improvement 2).
      */
-    private double closeFeedbackLoopWithReward(RequestContext context, ExplainedDecision decision,
+    private Mono<Double> closeFeedbackLoopWithReward(RequestContext context, ExplainedDecision decision,
                                                String prompt, String response, long latencyMs,
                                                double costUsd, boolean success) {
         // Step 5: Quality Evaluation (heuristic baseline — LLM-as-Judge is Phase 2)
-        QualityScore quality = qualityEvaluator.evaluate(prompt, response, context.taskCategory());
+        return qualityEvaluator.evaluate(prompt, response, context.taskCategory())
+            .map(quality -> {
+                // Step 6: Reward Calculation (normalized, all inputs in [0,1])
+                double reward = rewardCalculator.calculate(quality, latencyMs, costUsd, success);
+                double[] rewardComponents = rewardCalculator.calculateComponents(quality, latencyMs, costUsd, success);
 
-        // Step 6: Reward Calculation (normalized, all inputs in [0,1])
-        double reward = rewardCalculator.calculate(quality, latencyMs, costUsd, success);
+                // Construct the composite arm key (provider:model)
+                String armKey = decision.selectedProvider() + ":" + decision.selectedModel();
 
-        // Construct the composite arm key (provider:model)
-        String armKey = decision.selectedProvider() + ":" + decision.selectedModel();
+                // Step 7: Reputation Update (read-only for observability — Option A per Fix 2)
+                reputationService.update(armKey, quality.compositeScore(), latencyMs, costUsd, success);
 
-        // Step 7: Reputation Update (read-only for observability — Option A per Fix 2)
-        reputationService.update(armKey, quality.compositeScore(), latencyMs, costUsd, success);
+                // Step 8: Online Learning Update (only ADAPTIVE/FEDERATED engines actually learn from reward)
+                decisionEngine.updateWithComponents(context, armKey, reward, rewardComponents);
 
-        // Step 8: Online Learning Update (only ADAPTIVE engine actually learns from reward)
-        decisionEngine.update(context, armKey, reward);
-
-        log.info("Feedback loop closed: arm={}, quality={:.3f}, reward={:.4f}, latency={}ms",
-                 armKey, quality.compositeScore(), reward, latencyMs);
-        return reward;
+                log.info("Feedback loop closed: arm={}, quality={:.3f}, reward={:.4f}, latency={}ms",
+                         armKey, quality.compositeScore(), reward, latencyMs);
+                return reward;
+            });
     }
 
     /** Backward-compat wrapper for cache-hit path (reward not needed in response). */
     private void closeFeedbackLoop(RequestContext context, ExplainedDecision decision,
                                    String prompt, String response, long latencyMs,
                                    double costUsd, boolean success) {
-        closeFeedbackLoopWithReward(context, decision, prompt, response, latencyMs, costUsd, success);
+        closeFeedbackLoopWithReward(context, decision, prompt, response, latencyMs, costUsd, success).subscribe();
     }
 
     /**
@@ -239,7 +247,7 @@ public class ChatOrchestrationService {
 
         // Record failure in reputation
         reputationService.update(failedArmKey, 0.0, 0, 0.0, false);
-        decisionEngine.update(context, failedArmKey, 0.0);
+        decisionEngine.updateWithComponents(context, failedArmKey, 0.0, new double[]{0.0, 0.0, 0.0, 0.0});
 
         // Try fallback: pick next best provider from remaining eligible
         List<String> remaining = originalDecision.armScores().keySet().stream()
@@ -254,28 +262,29 @@ public class ChatOrchestrationService {
                 CircuitBreaker fallbackCb = circuitBreakerRegistry.circuitBreaker(
                     fallbackDecision.selectedProvider().toLowerCase());
 
-                return getCollapsedChat(fallbackProvider, request.getMessage(),
+                return getCollapsedChat(fallbackProvider, fallbackDecision.selectedProvider(), request.getMessage(),
                                         fallbackDecision.selectedModel(), fallbackCb)
-                    .map(response -> {
+                    .flatMap(response -> {
                         long latency = System.currentTimeMillis() - start;
                         double costUsd = estimateCost(fallbackDecision.selectedProvider(),
                             fallbackDecision.selectedModel(), response.inputTokens(), response.outputTokens());
 
-                        double reward = closeFeedbackLoopWithReward(context, fallbackDecision,
-                            request.getMessage(), response.content(), latency, costUsd, true);
+                        return closeFeedbackLoopWithReward(context, fallbackDecision,
+                            request.getMessage(), response.content(), latency, costUsd, true)
+                            .map(reward -> {
+                                logToDb(context, request, response.content(), fallbackDecision, latency,
+                                        "FALLBACK_RECOVERY", response.inputTokens(), response.outputTokens());
 
-                        logToDb(request, response.content(), fallbackDecision, latency,
-                                "FALLBACK_RECOVERY", response.inputTokens(), response.outputTokens());
-
-                        ChatResponse chatResponse = new ChatResponse(response.content(),
-                            originalDecision.selectedProvider() + " (" + failReason +
-                            " → Fallback: " + fallbackDecision.selectedProvider() + ")", latency);
-                        chatResponse.setActiveEngine(fallbackDecision.strategy().name());
-                        chatResponse.setRoutingReason("FALLBACK: " + originalDecision.selectedProvider()
-                            + " failed → " + fallbackDecision.reason());
-                        chatResponse.setRewardScore(reward);
-                        chatResponse.setArmScores(fallbackDecision.armScores());
-                        return chatResponse;
+                                ChatResponse chatResponse = new ChatResponse(response.content(),
+                                    originalDecision.selectedProvider() + " (" + failReason +
+                                    " → Fallback: " + fallbackDecision.selectedProvider() + ")", latency);
+                                chatResponse.setActiveEngine(fallbackDecision.strategy().name());
+                                chatResponse.setRoutingReason("FALLBACK: " + originalDecision.selectedProvider()
+                                    + " failed → " + fallbackDecision.reason());
+                                chatResponse.setRewardScore(reward);
+                                chatResponse.setArmScores(fallbackDecision.armScores());
+                                return chatResponse;
+                            });
                     })
                     .onErrorResume(err -> {
                         long latency = System.currentTimeMillis() - start;
@@ -291,20 +300,22 @@ public class ChatOrchestrationService {
             originalDecision.selectedProvider() + " (Failed)", latency));
     }
 
-    private Mono<ProviderResponse> getCollapsedChat(LlmProvider provider, String message,
+    private Mono<ProviderResponse> getCollapsedChat(LlmProvider provider, String providerSlug, String message,
                                                      String model, CircuitBreaker cb) {
         String collapseKey = model + ":" + message;
         return inFlightRequests.computeIfAbsent(collapseKey, key ->
-            provider.chat(message, model)
+            provider.chat(providerSlug, message, model)
                 .transformDeferred(CircuitBreakerOperator.of(cb))
                 .doFinally(signal -> inFlightRequests.remove(collapseKey))
                 .share()
         );
     }
 
-    private void logToDb(ChatRequest request, String answer, ExplainedDecision decision,
+    private void logToDb(RequestContext context, ChatRequest request, String answer, ExplainedDecision decision,
                          long latencyMs, String status, int inputTokens, int outputTokens) {
+        String tenantId = (context != null && context.tenantId() != null) ? context.tenantId() : "default";
         RequestLog logEntry = new RequestLog(
+            tenantId,
             request.getUserId() != null ? request.getUserId() : "anonymous",
             request.getMessage(), answer,
             decision.selectedProvider(), decision.selectedModel(),
@@ -317,14 +328,8 @@ public class ChatOrchestrationService {
     }
 
     private double estimateCost(String provider, String model, int inputTokens, int outputTokens) {
-        // Simplified cost estimation — full pricing is in LoggingService
-        if (provider.equalsIgnoreCase("gemini")) {
-            if (model.contains("pro")) return (inputTokens * 1.25 + outputTokens * 5.00) / 1_000_000.0;
-            return (inputTokens * 0.075 + outputTokens * 0.30) / 1_000_000.0;
-        } else if (provider.equalsIgnoreCase("groq")) {
-            if (model.contains("70b")) return (inputTokens * 0.59 + outputTokens * 0.79) / 1_000_000.0;
-            return (inputTokens * 0.05 + outputTokens * 0.08) / 1_000_000.0; // 8B is much cheaper
-        }
-        return 0.0;
+        // Delegate entirely to ModelRegistry — no hardcoded pricing here.
+        String armKey = provider + ":" + model;
+        return modelRegistry.computeCostUsd(armKey, inputTokens, outputTokens);
     }
 }

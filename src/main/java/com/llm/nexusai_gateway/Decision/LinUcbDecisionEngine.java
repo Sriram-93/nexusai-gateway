@@ -50,25 +50,86 @@ public class LinUcbDecisionEngine implements DecisionEngine {
     /** Per-arm parameters: b vector (d×1) */
     private final ConcurrentHashMap<String, double[]> armB;
 
-    /** Provider model mapping */
-    private final Map<String, String> providerModelMap;
-
     private final ReputationService reputationService;
+
+    private final com.llm.nexusai_gateway.Agent.FeedbackLogRepository feedbackLogRepository;
+    private final com.llm.nexusai_gateway.Context.ContextExtractor contextExtractor;
 
     /** Total selections across all arms (for logging) */
     private long totalSelections;
 
-    public LinUcbDecisionEngine(double alpha, ReputationService reputationService) {
+    public LinUcbDecisionEngine(double alpha, ReputationService reputationService,
+                                com.llm.nexusai_gateway.Agent.FeedbackLogRepository feedbackLogRepository,
+                                com.llm.nexusai_gateway.Context.ContextExtractor contextExtractor) {
         this.alpha = alpha;
         this.dimension = RequestContext.FEATURE_DIMENSION;
         this.armA = new ConcurrentHashMap<>();
         this.armB = new ConcurrentHashMap<>();
         this.reputationService = reputationService;
+        this.feedbackLogRepository = feedbackLogRepository;
+        this.contextExtractor = contextExtractor;
         this.totalSelections = 0;
-        this.providerModelMap = Map.of(
-            "gemini", "gemini-2.5-flash",
-            "groq", "llama-3.3-70b-versatile"
-        );
+        // Trigger closed-loop startup rehydration
+        rehydrateFromDatabase();
+    }
+
+    public void rehydrateFromDatabase() {
+        if (feedbackLogRepository == null) {
+            log.warn("FeedbackLogRepository not provided. Skipping bandit rehydration.");
+            return;
+        }
+        try {
+            List<com.llm.nexusai_gateway.Agent.FeedbackLog> logs = feedbackLogRepository.findAll();
+            if (logs.isEmpty()) {
+                log.info("No feedback logs found in database. Starting LinUCB bandit fresh.");
+                return;
+            }
+            log.info("Rehydrating LinUCB bandit parameters from {} historical logs...", logs.size());
+            for (com.llm.nexusai_gateway.Agent.FeedbackLog entry : logs) {
+                double[] x = reconstructFeatureVector(entry.getPrompt());
+                String armKey = entry.getSelectedProvider() + ":" + entry.getSelectedModel();
+                
+                initArmIfAbsent(armKey);
+                double[][] A = armA.get(armKey);
+                double[] b = armB.get(armKey);
+                double r = entry.getAccuracyScore();
+
+                for (int i = 0; i < dimension; i++) {
+                    for (int j = 0; j < dimension; j++) {
+                        A[i][j] += x[i] * x[j];
+                    }
+                    b[i] += r * x[i];
+                }
+            }
+            log.info("LinUCB parameter rehydration completed successfully.");
+        } catch (Exception e) {
+            log.error("Failed to rehydrate LinUCB bandit parameters from database: {}", e.getMessage());
+        }
+    }
+
+    private double[] reconstructFeatureVector(String prompt) {
+        double[] features = new double[dimension];
+        features[0] = 1.0; // bias term
+        
+        if (prompt == null || prompt.isBlank()) {
+            return features;
+        }
+
+        if (contextExtractor != null) {
+            try {
+                com.llm.nexusai_gateway.Context.RequestContext ctx = contextExtractor.extract(
+                    new com.llm.nexusai_gateway.Model.ChatRequest(prompt, "system", "system", null, null, null)
+                ).block();
+                
+                if (ctx != null) {
+                    return ctx.toFeatureVector();
+                }
+            } catch (Exception e) {
+                log.warn("Failed semantic classification during ML rehydration, using default zeros. {}", e.getMessage());
+            }
+        }
+        
+        return features;
     }
 
     @Override
@@ -106,7 +167,7 @@ public class LinUcbDecisionEngine implements DecisionEngine {
 
         ProviderReputation rep = reputationService.get(bestArm);
         String finalProvider = bestArm.contains(":") ? bestArm.split(":")[0] : bestArm;
-        String finalModel = bestArm.contains(":") ? bestArm.split(":")[1] : providerModelMap.getOrDefault(finalProvider, "default");
+        String finalModel = bestArm.contains(":") ? bestArm.split(":")[1] : "default";
 
         log.info("LinUCB selected {} (UCB={:.4f}) from {} candidates [selection #{}]",
                  bestArm, bestUcb, eligibleProviders.size(), totalSelections);

@@ -35,6 +35,15 @@ public interface DecisionEngine {
     void update(RequestContext context, String provider, double reward);
 
     /**
+     * Update internal state using a decomposed multi-objective reward vector.
+     * Only advanced strategies (e.g., FederatedLinUcbEngine) use the components directly.
+     * Default implementation falls back to scalar reward.
+     */
+    default void updateWithComponents(RequestContext context, String provider, double scalarReward, double[] rewardComponents) {
+        update(context, provider, scalarReward);
+    }
+
+    /**
      * Get the routing strategy this engine implements.
      */
     RoutingStrategy getStrategy();

@@ -9,6 +9,8 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
 
+import reactor.core.publisher.Mono;
+
 /**
  * Heuristic-based quality evaluator.
  *
@@ -27,9 +29,9 @@ public class HeuristicQualityEvaluator implements QualityEvaluator {
     private static final Logger log = LoggerFactory.getLogger(HeuristicQualityEvaluator.class);
 
     @Override
-    public QualityScore evaluate(String prompt, String response, TaskCategory taskCategory) {
+    public Mono<QualityScore> evaluate(String prompt, String response, TaskCategory taskCategory) {
         if (response == null || response.isBlank()) {
-            return QualityScore.of(0.0, 0.0, 0.0);
+            return Mono.just(QualityScore.of(0.0, 0.0, 0.0));
         }
 
         double completeness = evaluateCompleteness(prompt, response, taskCategory);
@@ -41,7 +43,7 @@ public class HeuristicQualityEvaluator implements QualityEvaluator {
         log.debug("Quality evaluation: completeness={:.2f}, relevance={:.2f}, format={:.2f}, composite={:.2f}",
                   completeness, relevance, formatCompliance, score.compositeScore());
 
-        return score;
+        return Mono.just(score);
     }
 
     /**

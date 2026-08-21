@@ -17,17 +17,12 @@ public class WeightedDecisionEngine implements DecisionEngine {
     private static final Logger log = LoggerFactory.getLogger(WeightedDecisionEngine.class);
 
     private final Map<String, Double> weights;
-    private final Map<String, String> providerModelMap;
     private final ReputationService reputationService;
     private final Random random = new Random();
 
     public WeightedDecisionEngine(Map<String, Double> weights, ReputationService reputationService) {
         this.weights = weights;
         this.reputationService = reputationService;
-        this.providerModelMap = Map.of(
-            "gemini", "gemini-2.5-flash",
-            "groq", "llama-3.3-70b-versatile"
-        );
     }
 
     private double getWeight(String arm) {

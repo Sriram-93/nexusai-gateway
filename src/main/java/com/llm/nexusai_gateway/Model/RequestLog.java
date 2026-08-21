@@ -11,6 +11,9 @@ public class RequestLog {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(name = "tenant_id")
+    private String tenantId;
+
     @Column(name = "user_id")
     private String userId;
 
@@ -49,9 +52,10 @@ public class RequestLog {
     }
 
     // Parameterized constructor
-    public RequestLog(String userId, String prompt, String response, String provider, 
+    public RequestLog(String tenantId, String userId, String prompt, String response, String provider, 
                       String model, String priority, Long latencyMs, Integer tokenUsage, 
                       Double costUsd, LocalDateTime timestamp, String status) {
+        this.tenantId = tenantId;
         this.userId = userId;
         this.prompt = prompt;
         this.response = response;
@@ -160,5 +164,13 @@ public class RequestLog {
 
     public void setStatus(String status) {
         this.status = status;
+    }
+
+    public String getTenantId() {
+        return tenantId;
+    }
+
+    public void setTenantId(String tenantId) {
+        this.tenantId = tenantId;
     }
 }

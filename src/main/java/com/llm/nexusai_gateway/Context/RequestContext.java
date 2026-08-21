@@ -24,43 +24,33 @@ public record RequestContext(
     boolean requiresLongContext,
     String userId,
     String tenantId,
-    Map<String, Double> providerHealthScores
+    Map<String, Double> providerHealthScores,
+    float[] semanticEmbedding
 ) {
 
     /**
      * Converts context features into a normalized double array for the bandit algorithm.
      *
-     * 5 dimensions (per convergence constraint — see directives Q2):
-     *   [0] bias          — constant 1.0, allows θ to learn a baseline reward intercept
-     *   [1] complexity    — [0,1] estimated prompt complexity (length + vocab + structure)
-     *   [2] tokenNorm     — [0,1] estimated token count normalized to 4096 context window
-     *   [3] longContext   — binary 0/1, whether prompt exceeds 4096 token threshold
-     *   [4] domainWeight  — [0,1] task type as a quality-weight proxy
-     *                       (CODE=1.0, REASONING=0.75, CREATIVE=0.5, FACTUAL=0.25, CONVERSATION=0.0)
+     * NEW: Replaced the manual 5D engineered features with the raw ONNX semantic embedding.
+     * We take the first 16 dimensions of the 384-dimensional embedding to balance 
+     * rich semantic representation with LinUCB convergence speed (d=17).
      *
-     * Rationale: One-hot encoding (4 dims) collapsed into a single ordinal domain weight.
-     * This keeps d=5, ensuring LinUCB converges with realistic traffic volumes.
+     *   [0] bias term
+     *   [1..16] First 16 principal/raw dimensions of the semantic embedding
      */
     public double[] toFeatureVector() {
-        double tokenCountNorm = Math.min(1.0, estimatedTokenCount / 4096.0);
-        double longCtx = requiresLongContext ? 1.0 : 0.0;
-        double domainWeight = switch (taskCategory) {
-            case CODE         -> 1.00;
-            case REASONING    -> 0.75;
-            case CREATIVE     -> 0.50;
-            case FACTUAL      -> 0.25;
-            case CONVERSATION -> 0.00;
-        };
-
-        return new double[]{
-            1.0,                    // [0] bias term
-            estimatedComplexity,    // [1] complexity ∈ [0,1]
-            tokenCountNorm,         // [2] token count ∈ [0,1]
-            longCtx,                // [3] long context flag (binary)
-            domainWeight            // [4] domain quality weight ∈ [0,1]
-        };
+        double[] features = new double[FEATURE_DIMENSION];
+        features[0] = 1.0; // bias term
+        
+        if (semanticEmbedding != null && semanticEmbedding.length >= 16) {
+            for (int i = 0; i < 16; i++) {
+                features[i + 1] = semanticEmbedding[i];
+            }
+        }
+        
+        return features;
     }
 
     /** Number of features in the context vector. Must match toFeatureVector() length. */
-    public static final int FEATURE_DIMENSION = 5;
+    public static final int FEATURE_DIMENSION = 17;
 }

@@ -23,29 +23,28 @@ public class GroqProvider implements LlmProvider {
     @Value("${groq.api.url}")
     private String apiUrl;
 
-    @Value("${groq.model}")
-    private String defaultModel;
-
-    @Value("${gateway.mock-missing-providers:true}")
+    @Value("${gateway.mock-missing-providers:false}")
     private boolean mockEnabled;
 
     private final WebClient webClient = WebClient.create();
 
     @Override
-    public Mono<ProviderResponse> chat(String message, String modelName) {
-        String activeModel = (modelName != null && !modelName.isBlank()) ? modelName : defaultModel;
-        log.info("[PROVIDER CALL] Executing Groq chat for model: {}", activeModel);
+    public Mono<ProviderResponse> chat(String providerSlug, String message, String modelName) {
+        if (modelName == null || modelName.isBlank()) {
+            return Mono.error(new IllegalArgumentException("GroqProvider requires a modelName from ModelRegistry."));
+        }
+        log.info("[PROVIDER CALL] Executing Groq chat for model: {}", modelName);
 
         if (apiKey == null || apiKey.isBlank() || "your_groq_api_key_here".equals(apiKey)) {
             if (mockEnabled) {
-                String text = "[MOCK Groq " + activeModel + "] Here is a simulated response to: \"" + message + "\"";
+                String text = "[MOCK Groq " + modelName + "] Here is a simulated response to: \"" + message + "\"";
                 return Mono.just(new ProviderResponse(text, estimateTokens(message), estimateTokens(text)));
             }
             return Mono.error(new IllegalArgumentException("Groq API key is not configured."));
         }
 
         Map<String, Object> body = Map.of(
-                "model", activeModel,
+                "model", modelName,
                 "messages", List.of(
                         Map.of(
                                 "role", "user",
@@ -82,7 +81,7 @@ public class GroqProvider implements LlmProvider {
                 .onErrorResume(e -> {
                     if (mockEnabled) {
                         log.warn("Groq real call failed (API key may be invalid or unpaid). Falling back to mock. Error: {}", e.getMessage());
-                        String text = "[MOCK Groq " + activeModel + "] Here is a simulated response to: \"" + message + "\"";
+                        String text = "[MOCK Groq " + modelName + "] Here is a simulated response to: \"" + message + "\"";
                         return Mono.just(new ProviderResponse(text, estimateTokens(message), estimateTokens(text)));
                     }
                     return Mono.error(e);

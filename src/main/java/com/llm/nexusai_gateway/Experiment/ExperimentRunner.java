@@ -42,17 +42,33 @@ public class ExperimentRunner {
     private final QualityEvaluator qualityEvaluator;
     private final RewardCalculator rewardCalculator;
     private final ReputationService reputationService;
+    private final com.llm.nexusai_gateway.Agent.FeedbackLogRepository feedbackLogRepository;
+    private final com.llm.nexusai_gateway.Tenant.TenantRegistry tenantRegistry;
+    private final com.llm.nexusai_gateway.Decision.LinUcbStateRepository stateRepository;
+    private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
+
+    private final com.llm.nexusai_gateway.Provider.ModelRegistry modelRegistry;
 
     public ExperimentRunner(ContextExtractor contextExtractor,
                             ProviderRegistry providerRegistry,
                             QualityEvaluator qualityEvaluator,
                             RewardCalculator rewardCalculator,
-                            ReputationService reputationService) {
+                            ReputationService reputationService,
+                            com.llm.nexusai_gateway.Agent.FeedbackLogRepository feedbackLogRepository,
+                            com.llm.nexusai_gateway.Tenant.TenantRegistry tenantRegistry,
+                            com.llm.nexusai_gateway.Decision.LinUcbStateRepository stateRepository,
+                            com.fasterxml.jackson.databind.ObjectMapper objectMapper,
+                            com.llm.nexusai_gateway.Provider.ModelRegistry modelRegistry) {
         this.contextExtractor = contextExtractor;
         this.providerRegistry = providerRegistry;
         this.qualityEvaluator = qualityEvaluator;
         this.rewardCalculator = rewardCalculator;
         this.reputationService = reputationService;
+        this.feedbackLogRepository = feedbackLogRepository;
+        this.tenantRegistry = tenantRegistry;
+        this.stateRepository = stateRepository;
+        this.objectMapper = objectMapper;
+        this.modelRegistry = modelRegistry;
     }
 
     /**
@@ -62,10 +78,11 @@ public class ExperimentRunner {
         log.info("Starting full AEDF experiment with {} requests", dataset.size());
 
         List<DecisionEngine> engines = List.of(
-            new StaticDecisionEngine("gemini", "gemini-2.5-flash", reputationService),
+            new StaticDecisionEngine("", "", reputationService),
             new RuleBasedDecisionEngine(reputationService),
-            new WeightedDecisionEngine(Map.of("gemini", 0.5, "groq", 0.5), reputationService),
-            new LinUcbDecisionEngine(1.0, reputationService)
+            new WeightedDecisionEngine(java.util.Collections.emptyMap(), reputationService),
+            new LinUcbDecisionEngine(1.0, reputationService, feedbackLogRepository, contextExtractor),
+            new com.llm.nexusai_gateway.Decision.FederatedLinUcbEngine(1.0, reputationService, tenantRegistry, stateRepository, objectMapper)
         );
 
         return Flux.fromIterable(engines)
@@ -87,14 +104,16 @@ public class ExperimentRunner {
 
     private Mono<Void> processRequestSimulated(DecisionEngine engine, ChatRequest request, ExperimentResult result) {
         long start = System.currentTimeMillis();
-        RequestContext context = contextExtractor.extract(request);
+        
+        // Ensure a multi-tenant distribution for the benchmark
+        if (request.getTenantId() == null) {
+            String[] tenants = {"enterprise-a", "startup-b", "research-c"};
+            request.setTenantId(tenants[(int) (Math.random() * tenants.length)]);
+        }
 
-        List<String> eligible = List.of(
-            "gemini:gemini-2.5-flash",
-            "gemini:gemini-2.5-pro",
-            "groq:llama-3.3-70b-versatile",
-            "groq:llama-3.1-8b-instant"
-        );
+        return contextExtractor.extract(request).flatMap(context -> {
+
+        List<String> eligible = modelRegistry.getEnabledArmKeys();
 
         // 1. Select provider
         ExplainedDecision decision = engine.select(context, eligible);
@@ -106,29 +125,33 @@ public class ExperimentRunner {
         }
 
         // 2. Execute provider (we use mock execution in experiments to run fast and avoid huge bills)
-        return provider.chat(request.getMessage(), decision.selectedModel())
-            .map(response -> {
+        return provider.chat(decision.selectedProvider(), request.getMessage(), decision.selectedModel())
+            .flatMap(response -> {
                 long latencyMs = System.currentTimeMillis() - start;
                 double cost = (response.inputTokens() * 0.1 + response.outputTokens() * 0.5) / 1_000_000.0;
 
-                QualityScore quality = qualityEvaluator.evaluate(request.getMessage(), response.content(), context.taskCategory());
-                double reward = rewardCalculator.calculate(quality, latencyMs, cost, true);
+                return qualityEvaluator.evaluate(request.getMessage(), response.content(), context.taskCategory())
+                    .map(quality -> {
+                        double reward = rewardCalculator.calculate(quality, latencyMs, cost, true);
+                        double[] rewardComponents = rewardCalculator.calculateComponents(quality, latencyMs, cost, true);
 
-                // Note: For regret, we need to know the optimal reward. In a real harness, we'd query ALL providers
-                // to find the optimal. For this simulated harness, we estimate an optimal reward bound.
-                double estimatedOptimalReward = Math.min(1.0, reward + 0.1);
-                boolean wasOptimal = reward >= (estimatedOptimalReward - 0.05);
+                        // Note: For regret, we need to know the optimal reward. In a real harness, we'd query ALL providers
+                        // to find the optimal. For this simulated harness, we estimate an optimal reward bound.
+                        double estimatedOptimalReward = Math.min(1.0, reward + 0.1);
+                        boolean wasOptimal = reward >= (estimatedOptimalReward - 0.05);
 
-                String armKey = decision.selectedProvider() + ":" + decision.selectedModel();
-                engine.update(context, armKey, reward);
+                        String armKey = decision.selectedProvider() + ":" + decision.selectedModel();
+                        engine.updateWithComponents(context, armKey, reward, rewardComponents);
 
-                result.recordRequest(reward, estimatedOptimalReward, quality.compositeScore(), latencyMs, cost, true, wasOptimal);
-                return response;
+                        result.recordRequest(reward, estimatedOptimalReward, quality.compositeScore(), latencyMs, cost, true, wasOptimal);
+                        return response;
+                    });
             })
             .onErrorResume(err -> {
                 result.recordRequest(0.0, 0.5, 0.0, System.currentTimeMillis() - start, 0.0, false, false);
                 return Mono.empty();
             })
             .then();
+        });
     }
 }
