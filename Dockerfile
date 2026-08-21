@@ -18,7 +18,7 @@ RUN mvn dependency:go-offline
 # Copy the backend source
 COPY src ./src
 # Copy the built frontend into the expected directory so Maven can bundle it
-COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
+COPY --from=frontend-builder /app/frontend/.output/public ./frontend/.output/public
 
 # Build the final JAR
 RUN mvn clean package -DskipTests

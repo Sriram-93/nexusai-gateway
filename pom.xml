@@ -210,7 +210,7 @@
 							<outputDirectory>${project.build.directory}/classes/static</outputDirectory>
 							<resources>
 								<resource>
-									<directory>frontend/dist</directory>
+									<directory>frontend/.output/public</directory>
 									<filtering>false</filtering>
 								</resource>
 							</resources>
