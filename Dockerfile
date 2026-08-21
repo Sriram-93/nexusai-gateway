@@ -29,4 +29,4 @@ RUN apt-get update && apt-get install -y libstdc++6 && rm -rf /var/lib/apt/lists
 WORKDIR /app
 COPY --from=backend-builder /app/target/nexusai-gateway-0.0.1-SNAPSHOT.jar app.jar
 EXPOSE 8080
-ENTRYPOINT ["java", "-Xmx256m", "-XX:MaxMetaspaceSize=128m", "-Xss512k", "-XX:+UseSerialGC", "-Djava.security.egd=file:/dev/./urandom", "-jar", "app.jar"]
+ENTRYPOINT ["java", "-Xmx400m", "-XX:MaxMetaspaceSize=128m", "-XX:+UseSerialGC", "-Djava.security.egd=file:/dev/./urandom", "-jar", "app.jar"]
