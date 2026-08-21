@@ -3,7 +3,7 @@ package com.llm.nexusai_gateway.Context;
 import com.llm.nexusai_gateway.Model.ChatRequest;
 import com.llm.nexusai_gateway.Reputation.ReputationService;
 import dev.langchain4j.data.embedding.Embedding;
-import dev.langchain4j.model.embedding.onnx.allminilml6v2.AllMiniLmL6V2EmbeddingModel;
+import dev.langchain4j.model.embedding.onnx.allminilml6v2q.AllMiniLmL6V2QuantizedEmbeddingModel;
 import dev.langchain4j.store.embedding.CosineSimilarity;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,7 +27,7 @@ public class ContextExtractor {
     private static final int LONG_CONTEXT_THRESHOLD = 4096;
 
     private final ReputationService reputationService;
-    private final AllMiniLmL6V2EmbeddingModel embeddingModel;
+    private final AllMiniLmL6V2QuantizedEmbeddingModel embeddingModel;
     
     // Pre-computed embeddings for our task categories (Semantic Anchors)
     private final Map<TaskCategory, Embedding> categoryAnchors = new HashMap<>();
@@ -37,7 +37,7 @@ public class ContextExtractor {
         
         // Initialize the in-memory ONNX embedding model
         log.info("Loading local ONNX embedding model (all-MiniLM-L6-v2) for intent detection...");
-        this.embeddingModel = new AllMiniLmL6V2EmbeddingModel();
+        this.embeddingModel = new AllMiniLmL6V2QuantizedEmbeddingModel();
         
         // Pre-compute embeddings for our semantic routes (anchors)
         // We use descriptive sentences so the vector captures the true semantic meaning of the category.
