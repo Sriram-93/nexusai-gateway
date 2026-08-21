@@ -24,7 +24,7 @@ COPY --from=frontend-builder /app/frontend/.output/public ./frontend/.output/pub
 RUN mvn clean package -DskipTests
 
 # Stage 3: Minimal Runtime Environment
-FROM eclipse-temurin:21-jre-alpine
+FROM eclipse-temurin:21-jre
 WORKDIR /app
 COPY --from=backend-builder /app/target/nexusai-gateway-0.0.1-SNAPSHOT.jar app.jar
 EXPOSE 8080
