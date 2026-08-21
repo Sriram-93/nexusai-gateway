@@ -192,3 +192,11 @@
   background: var(--glass-bg);
   backdrop-filter: blur(16px);
 }
+
+/* Hide Lovable badge globally */
+div[id*="lovable"], div[class*="lovable-badge"] {
+  display: none !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
