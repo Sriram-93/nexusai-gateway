@@ -102,6 +102,10 @@ public class ChatOrchestrationService {
 
         List<String> eligibleProviders = policyFilter.filter(allProviders, context);
 
+        if (eligibleProviders.isEmpty()) {
+            return Mono.just(new ChatResponse("Error: No configured or allowed providers available. Please connect an AI provider in the Provider Hub.", "system", System.currentTimeMillis() - start));
+        }
+
         // Step 3: Adaptive Decision or Manual Override
         ExplainedDecision decision;
         if (request.getProvider() != null && !request.getProvider().isBlank()) {
@@ -139,7 +143,10 @@ public class ChatOrchestrationService {
         log.info("AEDF Decision: provider={}, model={}, strategy={}, reason={}",
                  decision.selectedProvider(), decision.selectedModel(), decision.strategy(), decision.reason());
 
-        LlmProvider provider = providerRegistry.getProvider(decision.selectedProvider());
+        LlmProvider provider = providerRegistry.getProviderWithTenantKey(
+            decision.selectedProvider(),
+            context != null ? context.tenantId() : null
+        );
         if (provider == null) {
             long latency = System.currentTimeMillis() - start;
             return Mono.just(new ChatResponse(
@@ -147,7 +154,8 @@ public class ChatOrchestrationService {
                 decision.selectedProvider(), latency));
         }
 
-        CircuitBreaker cb = circuitBreakerRegistry.circuitBreaker(decision.selectedProvider().toLowerCase());
+        String fullArmKey = (decision.selectedProvider() + ":" + decision.selectedModel()).toLowerCase();
+        CircuitBreaker cb = circuitBreakerRegistry.circuitBreaker(fullArmKey);
 
         // Step 4: Rate Limit → Cache Check → Provider Execution
         return rateLimitingService.checkRateLimits(request, decision.selectedProvider())
@@ -259,10 +267,17 @@ public class ChatOrchestrationService {
             LlmProvider fallbackProvider = providerRegistry.getProvider(fallbackDecision.selectedProvider());
 
             if (fallbackProvider != null) {
-                CircuitBreaker fallbackCb = circuitBreakerRegistry.circuitBreaker(
-                    fallbackDecision.selectedProvider().toLowerCase());
+                String fallbackArmKey = (fallbackDecision.selectedProvider() + ":" + fallbackDecision.selectedModel()).toLowerCase();
+                CircuitBreaker fallbackCb = circuitBreakerRegistry.circuitBreaker(fallbackArmKey);
 
-                return getCollapsedChat(fallbackProvider, fallbackDecision.selectedProvider(), request.getMessage(),
+                // Use tenant-scoped key for fallback provider too
+                LlmProvider tenantFallbackProvider = providerRegistry.getProviderWithTenantKey(
+                    fallbackDecision.selectedProvider(),
+                    context != null ? context.tenantId() : null
+                );
+                if (tenantFallbackProvider == null) tenantFallbackProvider = fallbackProvider;
+
+                return getCollapsedChat(tenantFallbackProvider, fallbackDecision.selectedProvider(), request.getMessage(),
                                         fallbackDecision.selectedModel(), fallbackCb)
                     .flatMap(response -> {
                         long latency = System.currentTimeMillis() - start;

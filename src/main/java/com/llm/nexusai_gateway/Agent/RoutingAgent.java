@@ -16,13 +16,16 @@ public class RoutingAgent implements Agent {
     private final DecisionEngine decisionEngine;
     private final com.llm.nexusai_gateway.Health.ProviderHealthMonitor healthMonitor;
     private final ModelRegistry modelRegistry;
+    private final com.llm.nexusai_gateway.Policy.PolicyFilter policyFilter;
 
     public RoutingAgent(DecisionEngine decisionEngine,
                         com.llm.nexusai_gateway.Health.ProviderHealthMonitor healthMonitor,
-                        ModelRegistry modelRegistry) {
+                        ModelRegistry modelRegistry,
+                        com.llm.nexusai_gateway.Policy.PolicyFilter policyFilter) {
         this.decisionEngine  = decisionEngine;
         this.healthMonitor   = healthMonitor;
         this.modelRegistry   = modelRegistry;
+        this.policyFilter    = policyFilter;
     }
 
     @Override
@@ -33,7 +36,7 @@ public class RoutingAgent implements Agent {
 
     @Override
     public java.util.List<String> getDependencies() {
-        return java.util.List.of("IntentAgent", "ContextAgent", "PolicyAgent");
+        return java.util.List.of("IntentAgent", "PolicyAgent");
     }
 
     @Override
@@ -58,8 +61,11 @@ public class RoutingAgent implements Agent {
             // Pull all enabled arms from the registry — no hardcoded model list.
             List<String> allProviders = modelRegistry.getEnabledArmKeys();
 
+            // Apply PolicyFilter to enforce tenant API keys
+            List<String> eligibleProviders = policyFilter.filter(allProviders, ctx.getRequestContext());
+
             // Priority 8: filter out providers with OPEN circuit breakers
-            List<String> providers = healthMonitor.filterHealthy(allProviders);
+            List<String> providers = healthMonitor.filterHealthy(eligibleProviders);
 
             com.llm.nexusai_gateway.Routing.RoutingPolicy policy =
                 (ctx.getOriginalRequest() != null && ctx.getOriginalRequest().getRoutingPolicy() != null)
@@ -89,6 +95,10 @@ public class RoutingAgent implements Agent {
 
         if (eligible.isEmpty()) {
             eligible = availableProviders; // fallback
+        }
+
+        if (eligible.isEmpty()) {
+            return new RoutingResult("none", "none", "No configured providers available", "NONE");
         }
 
         // Apply budget policy routing override if budget is exhausted

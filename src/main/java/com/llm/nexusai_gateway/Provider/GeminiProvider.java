@@ -17,11 +17,12 @@ public class GeminiProvider implements LlmProvider {
 
     private static final Logger log = LoggerFactory.getLogger(GeminiProvider.class);
 
-    @Value("${gemini.api.key}")
-    private String apiKey;
 
     @Value("${gemini.api.url}")
     private String apiBaseUrl;
+
+    @Value("${gemini.api.key:}")
+    private String defaultApiKey;
 
     @Value("${gateway.mock-missing-providers:false}")
     private boolean mockEnabled;
@@ -30,11 +31,19 @@ public class GeminiProvider implements LlmProvider {
 
     @Override
     public Mono<ProviderResponse> chat(String providerSlug, String message, String modelName) {
+        return chatWithKey(providerSlug, message, modelName, null);
+    }
+
+    @Override
+    public Mono<ProviderResponse> chatWithKey(String providerSlug, String message, String modelName, String overrideApiKey) {
         if (modelName == null || modelName.isBlank()) {
             return Mono.error(new IllegalArgumentException("GeminiProvider requires a non-null modelName from ModelRegistry."));
         }
         log.info("[PROVIDER CALL] Executing Gemini chat for model: {}", modelName);
-        if (apiKey == null || apiKey.isBlank() || "your_gemini_api_key_here".equals(apiKey)) {
+
+        String activeKey = (overrideApiKey != null && !overrideApiKey.isBlank()) ? overrideApiKey : defaultApiKey;
+
+        if (activeKey == null || activeKey.isBlank() || "your_gemini_api_key_here".equals(activeKey)) {
             if (mockEnabled) {
                 String text = "[MOCK Gemini " + modelName + "] Here is a simulated response to: \"" + message + "\"";
                 return Mono.just(new ProviderResponse(text, estimateTokens(message), estimateTokens(text)));
@@ -43,7 +52,7 @@ public class GeminiProvider implements LlmProvider {
         }
 
         // Build the per-model URL dynamically from the base URL template
-        String resolvedUrl = apiBaseUrl + "/" + modelName + ":generateContent?key=" + apiKey;
+        String resolvedUrl = apiBaseUrl + "/" + modelName + ":generateContent?key=" + activeKey;
         Map<String, Object> body = Map.of(
                 "contents", List.of(
                         Map.of("parts", List.of(

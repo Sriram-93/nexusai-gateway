@@ -125,6 +125,45 @@ public class ProviderManagementController {
         return ResponseEntity.ok(summaries);
     }
 
+    /**
+     * GET /api/providers/status
+     * Pre-flight check used by the Sandbox page before allowing a test request.
+     * Returns: hasProviders, readyToChat, connectedCount.
+     */
+    @GetMapping("/status")
+    public ResponseEntity<?> getProviderStatus(
+            @RequestHeader(value = "X-Tenant-Id", required = false) String tenantIdHeader,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        String tenantId = resolveTenantId(tenantIdHeader, authHeader);
+        // Allow read even for non-admin roles (Sandbox needs this)
+        if (tenantId == null) {
+            // Try extracting tenantId from JWT regardless of role for status check
+            if (authHeader != null && authHeader.startsWith("Bearer ")) {
+                try {
+                    String token = authHeader.substring(7);
+                    tenantId = jwtUtil.extractClaim(token, claims -> claims.get("tenantId", String.class));
+                } catch (Exception ignored) {}
+            }
+        }
+        if (tenantId == null) {
+            return ResponseEntity.ok(Map.of("hasProviders", false, "readyToChat", false, "connectedCount", 0));
+        }
+
+        List<ProviderConfig> providers = providerConfigRepository.findByTenantId(tenantId);
+        long connectedCount = providers.stream()
+            .filter(p -> p.getApiKey() != null && !p.getApiKey().isBlank())
+            .count();
+        boolean hasModels = !modelRepository.findByProviderSlugAndEnabledTrue(
+            providers.stream().map(ProviderConfig::getSlug).findFirst().orElse("")).isEmpty();
+        boolean readyToChat = connectedCount > 0;
+
+        return ResponseEntity.ok(Map.of(
+            "hasProviders", !providers.isEmpty(),
+            "readyToChat", readyToChat,
+            "connectedCount", connectedCount
+        ));
+    }
+
     /** Trigger an immediate model re-discovery for a provider (tenant-scoped). */
     @PostMapping("/{slug}/discover")
     public ResponseEntity<?> triggerDiscovery(
@@ -165,7 +204,7 @@ public class ProviderManagementController {
             .orElse(ResponseEntity.notFound().build());
     }
 
-    /** Update provider credentials / API key (tenant-scoped). */
+    /** Update provider credentials / API key (tenant-scoped). If key is cleared, disables all models. */
     @PatchMapping("/{slug}/credentials")
     public ResponseEntity<?> updateCredentials(
             @PathVariable String slug,
@@ -177,9 +216,56 @@ public class ProviderManagementController {
 
         return providerConfigRepository.findBySlugAndTenantId(slug, tenantId)
             .map(provider -> {
-                provider.setApiKey(body.get("apiKey"));
+                String newKey = body.get("apiKey");
+                provider.setApiKey(newKey);
                 providerConfigRepository.save(provider);
+
+                // If key was cleared, disable all discovered models for this provider
+                if (newKey == null || newKey.isBlank()) {
+                    List<com.llm.nexusai_gateway.Provider.RegisteredModel> models =
+                        modelRepository.findByProviderSlug(slug);
+                    models.forEach(m -> m.setEnabled(false));
+                    modelRepository.saveAll(models);
+                    log.info("API key removed for provider '{}' (tenant {}). Disabled {} models.",
+                        slug, tenantId, models.size());
+                    return ResponseEntity.ok(Map.of(
+                        "message", "Key removed. All models for this provider have been disabled.",
+                        "modelsDisabled", models.size()
+                    ));
+                }
                 return ResponseEntity.ok(Map.of("message", "Credentials updated."));
+            })
+            .orElse(ResponseEntity.notFound().build());
+    }
+
+    /**
+     * DELETE /api/providers/{slug}
+     * Fully removes the provider record and disables all its models.
+     */
+    @DeleteMapping("/{slug}")
+    public ResponseEntity<?> removeProvider(
+            @PathVariable String slug,
+            @RequestHeader(value = "X-Tenant-Id", required = false) String tenantIdHeader,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        String tenantId = resolveTenantId(tenantIdHeader, authHeader);
+        if (tenantId == null) return ResponseEntity.status(401).body(Map.of("error", "Authentication required"));
+
+        return providerConfigRepository.findBySlugAndTenantId(slug, tenantId)
+            .map(provider -> {
+                // Disable all models for this provider
+                List<com.llm.nexusai_gateway.Provider.RegisteredModel> models =
+                    modelRepository.findByProviderSlug(slug);
+                models.forEach(m -> m.setEnabled(false));
+                modelRepository.saveAll(models);
+
+                // Remove the provider config
+                providerConfigRepository.delete(provider);
+                log.info("Provider '{}' removed for tenant {}. Disabled {} models.", slug, tenantId, models.size());
+
+                return ResponseEntity.ok(Map.<String, Object>of(
+                    "message", "Provider removed and all models disabled.",
+                    "modelsDisabled", models.size()
+                ));
             })
             .orElse(ResponseEntity.notFound().build());
     }
@@ -195,7 +281,7 @@ public class ProviderManagementController {
             try {
                 String token = authHeader.substring(7);
                 String role = jwtUtil.extractClaim(token, claims -> claims.get("role", String.class));
-                if (role == null || (!role.equals("ORG_ADMIN") && !role.equals("SOLO"))) {
+                if (role == null || (!role.equals("ORG_ADMIN") && !role.equals("SOLO") && !role.equals("OWNER"))) {
                     log.warn("Access denied. Role {} is not permitted to manage providers.", role);
                     return null; // Deny access by returning null tenantId
                 }

@@ -16,13 +16,14 @@ public class OpenAiProvider implements LlmProvider {
 
     private static final Logger log = LoggerFactory.getLogger(OpenAiProvider.class);
 
-    @Value("${openai.api.key}")
-    private String apiKey;
 
     @Value("${openai.api.url}")
     private String apiUrl;
 
-    @Value("${openai.model}")
+    @Value("${openai.api.key:}")
+    private String defaultApiKey;
+
+    @Value("${openai.model:gpt-4o-mini}")
     private String defaultModel;
 
     @Value("${gateway.mock-missing-providers:false}")
@@ -32,10 +33,16 @@ public class OpenAiProvider implements LlmProvider {
 
     @Override
     public Mono<ProviderResponse> chat(String providerSlug, String message, String modelName) {
+        return chatWithKey(providerSlug, message, modelName, null);
+    }
+
+    @Override
+    public Mono<ProviderResponse> chatWithKey(String providerSlug, String message, String modelName, String overrideApiKey) {
         log.info("[PROVIDER CALL] OpenAi -> model: {}", modelName);
         String activeModel = (modelName != null && !modelName.isBlank()) ? modelName : defaultModel;
+        String activeKey = (overrideApiKey != null && !overrideApiKey.isBlank()) ? overrideApiKey : defaultApiKey;
 
-        if (apiKey == null || apiKey.isBlank() || "your_openai_api_key_here".equals(apiKey)) {
+        if (activeKey == null || activeKey.isBlank() || "your_openai_api_key_here".equals(activeKey)) {
             if (mockEnabled) {
                 String text = "[MOCK OpenAI " + activeModel + "] Here is a simulated response to: \"" + message + "\"";
                 return Mono.just(new ProviderResponse(text, estimateTokens(message), estimateTokens(text)));
@@ -55,7 +62,7 @@ public class OpenAiProvider implements LlmProvider {
 
         return webClient.post()
                 .uri(apiUrl)
-                .header("Authorization", "Bearer " + apiKey)
+                .header("Authorization", "Bearer " + activeKey)
                 .header("Content-Type", "application/json")
                 .bodyValue(body)
                 .retrieve()

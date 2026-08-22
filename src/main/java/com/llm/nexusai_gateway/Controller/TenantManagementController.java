@@ -26,7 +26,7 @@ public class TenantManagementController {
             String tokenTenant = jwtUtil.extractClaim(token, claims -> claims.get("tenantId", String.class));
             String role = jwtUtil.extractClaim(token, claims -> claims.get("role", String.class));
             return tokenTenant != null && tokenTenant.equals(targetTenantId) 
-                && role != null && (role.equals("ORG_ADMIN") || role.equals("SOLO") || role.equals("SUPER_ADMIN"));
+                && role != null && (role.equals("ORG_ADMIN") || role.equals("SOLO") || role.equals("SUPER_ADMIN") || role.equals("OWNER"));
         } catch (Exception e) {
             return false;
         }

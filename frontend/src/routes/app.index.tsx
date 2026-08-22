@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { dashboardApi, tenantApi, getBaseUrl, type GlobalMetrics, type ActivityLog, type StreamEvent } from "@/lib/api";
 import { useUser } from "@/lib/user-context";
@@ -24,7 +24,6 @@ export const Route = createFileRoute("/app/")({
 function DashboardSwitch() {
   const { session } = useUser();
   const { openModal } = useUpgradeRequests();
-  const navigate = useNavigate();
   const role = session.role ?? "SOLO";
 
   const [logs, setLogs] = useState<(ActivityLog | StreamEvent)[]>([]);
@@ -41,9 +40,6 @@ function DashboardSwitch() {
       tenantApi.getTenant(session.tenantId)
         .then((t) => {
           setTenant(t);
-          if (t.hasApiKey === false && role === "SOLO") {
-            navigate({ to: "/app/providers" });
-          }
         })
         .catch(console.error);
     }
@@ -92,7 +88,8 @@ function DashboardSwitch() {
     case "ORG_ADMIN": return <OrgDashboard {...props} />;
     case "TEAM_LEAD": return <TeamDashboard {...props} />;
     case "TEAM_MEMBER": return <DeveloperDashboard {...props} />;
-    case "SOLO": return <SoloDashboard {...props} />;
+    case "SOLO":
+    case "OWNER": return <SoloDashboard {...props} />;
     default: return <DeveloperDashboard {...props} />;
   }
 }

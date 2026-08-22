@@ -24,6 +24,9 @@ public interface RequestLogRepository extends JpaRepository<RequestLog, Long> {
     /** Total request count for a specific tenant. */
     long countByTenantId(String tenantId);
 
+    /** Total request count for a specific user. */
+    long countByUserId(String userId);
+
     /** Average latency (Global). */
     @Query("SELECT AVG(r.latencyMs) FROM RequestLog r WHERE r.latencyMs IS NOT NULL")
     Double avgLatencyMs();

@@ -47,7 +47,7 @@ public class PolicyAgent implements Agent {
 
     @Override
     public java.util.List<String> getDependencies() {
-        return java.util.List.of("IntentAgent", "ContextAgent");
+        return java.util.List.of("IntentAgent");
     }
 
     @Override

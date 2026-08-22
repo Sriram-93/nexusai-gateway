@@ -17,11 +17,12 @@ public class GroqProvider implements LlmProvider {
 
     private static final Logger log = LoggerFactory.getLogger(GroqProvider.class);
 
-    @Value("${groq.api.key}")
-    private String apiKey;
 
     @Value("${groq.api.url}")
     private String apiUrl;
+
+    @Value("${groq.api.key:}")
+    private String defaultApiKey;
 
     @Value("${gateway.mock-missing-providers:false}")
     private boolean mockEnabled;
@@ -30,12 +31,19 @@ public class GroqProvider implements LlmProvider {
 
     @Override
     public Mono<ProviderResponse> chat(String providerSlug, String message, String modelName) {
+        return chatWithKey(providerSlug, message, modelName, null);
+    }
+
+    @Override
+    public Mono<ProviderResponse> chatWithKey(String providerSlug, String message, String modelName, String overrideApiKey) {
         if (modelName == null || modelName.isBlank()) {
             return Mono.error(new IllegalArgumentException("GroqProvider requires a modelName from ModelRegistry."));
         }
         log.info("[PROVIDER CALL] Executing Groq chat for model: {}", modelName);
 
-        if (apiKey == null || apiKey.isBlank() || "your_groq_api_key_here".equals(apiKey)) {
+        String activeKey = (overrideApiKey != null && !overrideApiKey.isBlank()) ? overrideApiKey : defaultApiKey;
+
+        if (activeKey == null || activeKey.isBlank() || "your_groq_api_key_here".equals(activeKey)) {
             if (mockEnabled) {
                 String text = "[MOCK Groq " + modelName + "] Here is a simulated response to: \"" + message + "\"";
                 return Mono.just(new ProviderResponse(text, estimateTokens(message), estimateTokens(text)));
@@ -55,7 +63,7 @@ public class GroqProvider implements LlmProvider {
 
         return webClient.post()
                 .uri(apiUrl)
-                .header("Authorization", "Bearer " + apiKey)
+                .header("Authorization", "Bearer " + activeKey)
                 .header("Content-Type", "application/json")
                 .bodyValue(body)
                 .retrieve()
@@ -79,6 +87,7 @@ public class GroqProvider implements LlmProvider {
                     }
                 })
                 .onErrorResume(e -> {
+                    log.error("[GROQ ERROR] Call to model {} failed: {}", modelName, e.getMessage());
                     if (mockEnabled) {
                         log.warn("Groq real call failed (API key may be invalid or unpaid). Falling back to mock. Error: {}", e.getMessage());
                         String text = "[MOCK Groq " + modelName + "] Here is a simulated response to: \"" + message + "\"";
@@ -87,7 +96,6 @@ public class GroqProvider implements LlmProvider {
                     return Mono.error(e);
                 });
     }
-
     @Override
     public boolean supports(String providerName) {
         return "groq".equalsIgnoreCase(providerName);

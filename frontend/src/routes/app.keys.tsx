@@ -59,7 +59,7 @@ function ApiKeys() {
   const { session } = useUser();
   const { openModal: openUpgrade } = useUpgradeRequests();
   const role = session.role ?? "SOLO";
-  const isAdmin = role === "ORG_ADMIN" || role === "SOLO";
+  const isAdmin = role === "ORG_ADMIN" || role === "SOLO" || role === "OWNER";
 
   useEffect(() => {
     const tenantId = typeof window !== "undefined" ? sessionStorage.getItem("nexus_tenant_id") : null;

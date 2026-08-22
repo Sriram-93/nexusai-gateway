@@ -50,18 +50,6 @@ public class ContextAgent implements Agent {
     @Override
     public Mono<WorkflowSignal> execute(AgentContext ctx) {
         var reqCtx = ctx.getRequestContext();
-        
-        // Semantic bypass: don't do RAG for pure conversation or factual trivia where RAG isn't needed.
-        if (reqCtx != null && reqCtx.taskCategory() == com.llm.nexusai_gateway.Context.TaskCategory.CONVERSATION) {
-            ctx.setContextResult(new ContextResult(
-                java.util.Collections.emptyList(),
-                "Bypassed Context Agent (Semantic CONVERSATION)",
-                "General baseline context loaded."
-            ));
-            ctx.addNote("ContextAgent: RAG bypassed for CONVERSATION prompt");
-            return Mono.just(WorkflowSignal.SKIP);
-        }
-        
         long t = System.currentTimeMillis();
         String userId = ctx.getUserId();
         String message = ctx.getMessage();

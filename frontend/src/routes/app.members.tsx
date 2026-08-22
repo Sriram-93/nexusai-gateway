@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { Users, UserPlus, Eye, Shield, Trash2, CheckCircle2 } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
-import { adminApi } from "@/lib/api";
+import { adminApi, teamsApi, type TeamSummary } from "@/lib/api";
 import { useUser } from "@/lib/user-context";
 import { Authorize } from "@/components/Authorize";
 
@@ -17,6 +17,7 @@ function Members() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { session } = useUser();
+  const [teamSummary, setTeamSummary] = useState<TeamSummary | null>(null);
 
   const [inviteEmail, setInviteEmail] = useState("");
   const [invitePassword, setInvitePassword] = useState("");
@@ -27,8 +28,14 @@ function Members() {
   const load = async () => {
     setLoading(true);
     try {
-      const data = await adminApi.getMembers();
-      setMembers(data);
+      if (session.role === "TEAM_LEAD") {
+        const data = await teamsApi.getMyTeam();
+        setTeamSummary(data);
+        setMembers(data.members || []);
+      } else {
+        const data = await adminApi.getMembers();
+        setMembers(data);
+      }
     } catch (err: any) {
       setError(err.message ?? "Failed to load members");
     } finally {
@@ -50,7 +57,11 @@ function Members() {
   const handleRemove = async (userId: string) => {
     if (!confirm("Are you sure you want to remove this member?")) return;
     try {
-      await adminApi.removeMember(userId);
+      if (session.role === "TEAM_LEAD" && teamSummary) {
+        await teamsApi.removeMember(teamSummary.id, userId);
+      } else {
+        await adminApi.removeMember(userId);
+      }
       setMembers(members.filter(m => m.id !== userId));
     } catch (err: any) {
       alert(err.message || "Failed to remove member");
@@ -63,7 +74,11 @@ function Members() {
     setInviteSuccess(false);
     setError(null);
     try {
-      await adminApi.inviteMember(inviteEmail, invitePassword, inviteRole);
+      if (session.role === "TEAM_LEAD" && teamSummary) {
+        await teamsApi.addMember(teamSummary.id, inviteEmail, inviteRole);
+      } else {
+        await adminApi.inviteMember(inviteEmail, invitePassword, inviteRole);
+      }
       setInviteSuccess(true);
       setInviteEmail("");
       setInvitePassword("");

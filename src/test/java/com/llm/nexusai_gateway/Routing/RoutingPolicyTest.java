@@ -7,6 +7,7 @@ import com.llm.nexusai_gateway.Decision.ExplainedDecision;
 import com.llm.nexusai_gateway.Provider.ModelCatalog;
 import com.llm.nexusai_gateway.Provider.ModelRegistry;
 import com.llm.nexusai_gateway.Health.ProviderHealthMonitor;
+import com.llm.nexusai_gateway.Policy.PolicyFilter;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -24,6 +25,7 @@ class RoutingPolicyTest {
 
     private DecisionEngine mockDecisionEngine;
     private ModelRegistry mockModelRegistry;
+    private PolicyFilter mockPolicyFilter;
     private RoutingAgent routingAgent;
     private PolicyAgent.PolicyResult cleanPolicyResult;
 
@@ -31,7 +33,8 @@ class RoutingPolicyTest {
     void setUp() {
         mockDecisionEngine = mock(DecisionEngine.class);
         mockModelRegistry = mock(ModelRegistry.class);
-        routingAgent = new RoutingAgent(mockDecisionEngine, new ProviderHealthMonitor(), mockModelRegistry);
+        mockPolicyFilter = mock(PolicyFilter.class);
+        routingAgent = new RoutingAgent(mockDecisionEngine, new ProviderHealthMonitor(), mockModelRegistry, mockPolicyFilter);
         cleanPolicyResult = new PolicyAgent.PolicyResult(List.of(), 0.0, true, false, false, "Clean");
     }
 

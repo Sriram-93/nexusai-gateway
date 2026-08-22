@@ -48,8 +48,8 @@ public class DecisionEngineTest {
         ExplainedDecision decision = engine.select(context, eligible);
         assertNotNull(decision);
         assertEquals(RoutingStrategy.RULE_BASED, decision.strategy());
-        assertEquals("gemini", decision.selectedProvider());
-        assertEquals("gemini-2.5-flash", decision.selectedModel());
+        assertEquals("groq", decision.selectedProvider());
+        assertEquals("llama-3.3-70b-versatile", decision.selectedModel());
 
         // Test creative workload mapping
         RequestContext creativeContext = new RequestContext(
@@ -63,8 +63,8 @@ public class DecisionEngineTest {
             new float[384]
         );
         ExplainedDecision creativeDecision = engine.select(creativeContext, eligible);
-        assertEquals("groq", creativeDecision.selectedProvider());
-        assertEquals("llama-3.3-70b-versatile", creativeDecision.selectedModel());
+        assertEquals("gemini", creativeDecision.selectedProvider());
+        assertEquals("gemini-2.5-flash", creativeDecision.selectedModel());
     }
 
     @Test

@@ -16,13 +16,15 @@ public class ClaudeProvider implements LlmProvider {
 
     private static final Logger log = LoggerFactory.getLogger(ClaudeProvider.class);
 
-    @Value("${claude.api.key}")
-    private String apiKey;
+
 
     @Value("${claude.api.url}")
     private String apiUrl;
 
-    @Value("${claude.model}")
+    @Value("${claude.api.key:}")
+    private String defaultApiKey;
+
+    @Value("${claude.model:claude-3-5-sonnet-20241022}")
     private String defaultModel;
 
     @Value("${gateway.mock-missing-providers:false}")
@@ -32,8 +34,14 @@ public class ClaudeProvider implements LlmProvider {
 
     @Override
     public Mono<ProviderResponse> chat(String providerSlug, String message, String modelName) {
+        return chatWithKey(providerSlug, message, modelName, null);
+    }
+
+    @Override
+    public Mono<ProviderResponse> chatWithKey(String providerSlug, String message, String modelName, String overrideApiKey) {
         log.info("[PROVIDER CALL] Claude -> model: {}", modelName);
-        if (apiKey == null || apiKey.isBlank() || "your_claude_api_key_here".equals(apiKey)) {
+        String activeKey = (overrideApiKey != null && !overrideApiKey.isBlank()) ? overrideApiKey : defaultApiKey;
+        if (activeKey == null || activeKey.isBlank() || "your_claude_api_key_here".equals(activeKey)) {
             if (mockEnabled) {
                 String activeModel = (modelName != null && !modelName.isBlank()) ? modelName : defaultModel;
                 String text = "[MOCK Claude " + activeModel + "] Here is a simulated response to: \"" + message + "\"";
@@ -57,7 +65,7 @@ public class ClaudeProvider implements LlmProvider {
 
         return webClient.post()
                 .uri(apiUrl)
-                .header("x-api-key", apiKey)
+                .header("x-api-key", activeKey)
                 .header("anthropic-version", "2023-06-01")
                 .header("Content-Type", "application/json")
                 .bodyValue(body)

@@ -114,7 +114,13 @@
 			<artifactId>google-auth-library-oauth2-http</artifactId>
 			<version>1.24.0</version>
 		</dependency>
-		
+
+		<!-- Email Notifications -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-mail</artifactId>
+		</dependency>
+
 		<!-- Security & JWT -->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>

@@ -43,12 +43,52 @@ public class ProviderRegistry {
     }
 
     /**
+     * Resolve provider for a specific tenant — uses the tenant's per-provisioned API key
+     * from ProviderConfig (BYOK), falling back to the global @Value key if none is set.
+     */
+    public LlmProvider getProviderWithTenantKey(String providerSlug, String tenantId) {
+        LlmProvider base = getProvider(providerSlug, tenantId);
+        if (base == null) return null;
+
+        // Fetch per-tenant key from DB
+        String tenantKey = null;
+        if (tenantId != null) {
+            tenantKey = providerConfigRepository.findBySlugAndTenantId(providerSlug, tenantId)
+                .map(ProviderConfig::getApiKey)
+                .filter(k -> k != null && !k.isBlank())
+                .orElse(null);
+        }
+
+        // Return a wrapper that injects the key at call time
+        final String resolvedKey = tenantKey;
+        final LlmProvider delegate = base;
+        return new LlmProvider() {
+            @Override
+            public Mono<ProviderResponse> chat(String slug, String message, String model) {
+                return delegate.chatWithKey(slug, message, model, resolvedKey);
+            }
+            @Override
+            public boolean supports(String name) {
+                return delegate.supports(name);
+            }
+        };
+    }
+
+    /**
+     * Resolve an executable LlmProvider for the given providerSlug (global lookup).
+     */
+    public LlmProvider getProvider(String providerSlug) {
+        return getProvider(providerSlug, null);
+    }
+
+    /**
      * Resolve an executable LlmProvider for the given providerSlug.
      *
      * @param providerSlug The provider identifier (e.g. "groq", "gemini", "my-custom-llm")
+     * @param tenantId The tenant context for looking up dynamic providers
      * @return A ready-to-call provider, or null if not found.
      */
-    public LlmProvider getProvider(String providerSlug) {
+    public LlmProvider getProvider(String providerSlug, String tenantId) {
         if (providerSlug == null || providerSlug.isBlank()) return null;
 
         // Step 1: Try dedicated Spring beans first (Groq, Gemini, etc.)
@@ -67,11 +107,21 @@ public class ProviderRegistry {
         // Step 2: Fall through to DB-driven dynamic provider lookup.
         // If the slug matches a registered OPENAI_COMPATIBLE or OLLAMA provider,
         // wrap the generic adapter so it executes with the correct config.
-        boolean isGenericProvider = providerConfigRepository.findBySlug(providerSlug)
-            .map(config -> config.getType() == ProviderConfig.ProviderType.OPENAI_COMPATIBLE
-                        || config.getType() == ProviderConfig.ProviderType.AZURE
-                        || config.getType() == ProviderConfig.ProviderType.OLLAMA)
-            .orElse(false);
+        boolean isGenericProvider = false;
+        if (tenantId != null) {
+            isGenericProvider = providerConfigRepository.findBySlugAndTenantId(providerSlug, tenantId)
+                .map(config -> config.getType() == ProviderConfig.ProviderType.OPENAI_COMPATIBLE
+                            || config.getType() == ProviderConfig.ProviderType.AZURE
+                            || config.getType() == ProviderConfig.ProviderType.OLLAMA)
+                .orElse(false);
+        } else {
+            // fallback for global
+            isGenericProvider = providerConfigRepository.findBySlug(providerSlug)
+                .map(config -> config.getType() == ProviderConfig.ProviderType.OPENAI_COMPATIBLE
+                            || config.getType() == ProviderConfig.ProviderType.AZURE
+                            || config.getType() == ProviderConfig.ProviderType.OLLAMA)
+                .orElse(false);
+        }
 
         if (isGenericProvider) {
             log.debug("Routing provider '{}' via GenericOpenAiCompatibleProvider.", providerSlug);
@@ -102,6 +152,11 @@ public class ProviderRegistry {
         @Override
         public Mono<ProviderResponse> chat(String providerSlug, String message, String modelName) {
             return delegate.chat(slug, message, modelName);
+        }
+
+        @Override
+        public Mono<ProviderResponse> chatWithKey(String providerSlug, String message, String modelName, String runtimeApiKey) {
+            return delegate.chatWithKey(slug, message, modelName, runtimeApiKey);
         }
 
         @Override

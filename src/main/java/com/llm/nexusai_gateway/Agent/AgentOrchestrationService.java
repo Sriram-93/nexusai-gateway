@@ -33,13 +33,16 @@ public class AgentOrchestrationService {
     private final WorkflowEngine workflowEngine;
     private final DecisionEngine decisionEngine;
     private final com.llm.nexusai_gateway.Telemetry.TelemetryService telemetryService;
+    private final com.llm.nexusai_gateway.Context.ContextExtractor contextExtractor;
 
     public AgentOrchestrationService(WorkflowEngine workflowEngine,
                                      DecisionEngine decisionEngine,
-                                     com.llm.nexusai_gateway.Telemetry.TelemetryService telemetryService) {
+                                     com.llm.nexusai_gateway.Telemetry.TelemetryService telemetryService,
+                                     com.llm.nexusai_gateway.Context.ContextExtractor contextExtractor) {
         this.workflowEngine   = workflowEngine;
         this.decisionEngine   = decisionEngine;
         this.telemetryService = telemetryService;
+        this.contextExtractor = contextExtractor;
     }
 
     /**
@@ -51,7 +54,11 @@ public class AgentOrchestrationService {
     public Mono<AgentChatResponse> process(ChatRequest request) {
         AgentContext ctx = new AgentContext(request);
 
-        return workflowEngine.execute(ctx)
+        return contextExtractor.extract(request)
+            .flatMap(reqCtx -> {
+                ctx.setRequestContext(reqCtx);
+                return workflowEngine.execute(ctx);
+            })
             .flatMap(finishedCtx -> {
                 // Post-workflow: trigger online LinUCB bandit update with the quality reward
                 String pipelineName = "DEFAULT";

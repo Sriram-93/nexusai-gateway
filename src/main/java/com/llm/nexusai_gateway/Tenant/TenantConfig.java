@@ -46,7 +46,7 @@ public class TenantConfig {
     @Column(name = "weight")
     private List<Double> rewardWeights;
 
-    @Column(nullable = false)
+    @Column(nullable = false, columnDefinition = "boolean default true")
     private boolean isActive = true;
 
     @ElementCollection(fetch = FetchType.EAGER)

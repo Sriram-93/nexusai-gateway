@@ -67,7 +67,7 @@ function Providers() {
   const role = session.role ?? "SOLO";
 
   useEffect(() => {
-    if (role !== "ORG_ADMIN" && role !== "SOLO" && role !== "SUPER_ADMIN") {
+    if (role !== "ORG_ADMIN" && role !== "SOLO" && role !== "SUPER_ADMIN" && role !== "OWNER") {
       navigate({ to: "/app" });
     }
   }, [role, navigate]);
@@ -449,7 +449,7 @@ function AddProviderModal({ onClose, onSuccess }: { onClose: () => void; onSucce
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs">Slug (unique ID)</Label>
-                  <Input value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value.toLowerCase().replace(/\s+/g, "-") })} placeholder={selectedCatalog.label.toLowerCase().replace(/\s+/g, "-")} className="glass-input h-9 text-xs" />
+                  <Input value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value.toLowerCase().replace(/\s+/g, "-") })} placeholder={selectedCatalog.label.toLowerCase().replace(/\s+/g, "-")} className="glass-input h-9 text-xs" autoComplete="off" data-lpignore="true" />
                 </div>
               </div>
 

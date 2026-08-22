@@ -88,6 +88,9 @@ public class ModelDiscoveryService {
         };
 
         int newCount = 0;
+        int removedCount = 0;
+        
+        // 1. Add any newly discovered models that don't exist
         for (String modelId : discoveredModelIds) {
             if (!modelRepository.existsByArmKey(provider.getSlug() + ":" + modelId)) {
                 RegisteredModel model = new RegisteredModel(provider.getSlug(), modelId);
@@ -98,10 +101,22 @@ public class ModelDiscoveryService {
             }
         }
 
+        // 2. Remove any existing models that the provider no longer returns (stale/unauthorized)
+        if (!discoveredModelIds.isEmpty() || provider.getType() == ProviderConfig.ProviderType.OLLAMA) {
+            List<RegisteredModel> existingModels = modelRepository.findByProviderSlug(provider.getSlug());
+            for (RegisteredModel existing : existingModels) {
+                if (!discoveredModelIds.contains(existing.getModelId())) {
+                    modelRepository.delete(existing);
+                    removedCount++;
+                    log.info("  Removed inaccessible/stale model: {}", existing.getArmKey());
+                }
+            }
+        }
+
         provider.setLastDiscoveredAt(Instant.now());
         providerConfigRepository.save(provider);
-        log.info("Discovery complete for '{}': {} new models found, {} total discovered.",
-                 provider.getSlug(), newCount, discoveredModelIds.size());
+        log.info("Discovery complete for '{}': {} new models found, {} removed, {} total active.",
+                 provider.getSlug(), newCount, removedCount, discoveredModelIds.size());
         return newCount;
     }
 

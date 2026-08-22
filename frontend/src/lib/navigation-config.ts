@@ -52,7 +52,8 @@ export function getNavigation(role: UserRole, isLocked: boolean): NavSection[] {
             { to: "/app", label: "Dashboard", icon: LayoutDashboard, exact: true },
             { to: "/app/analytics", label: "Analytics", icon: BarChart3 },
             { to: "/app/members", label: "Members", icon: Users },
-            { to: "/app/team-logs", label: "Teams", icon: Network },
+            { to: "/app/teams", label: "Teams", icon: Network },
+            { to: "/app/team-logs", label: "Org Logs", icon: ScrollText },
           ],
         },
         {

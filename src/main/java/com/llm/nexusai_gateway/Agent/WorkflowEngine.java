@@ -253,7 +253,8 @@ public class WorkflowEngine {
             return Mono.just(ctx);
         }
 
-        LlmProvider provider = providerRegistry.getProvider(routing.getProvider());
+        String tenantId = ctx.getRequestContext() != null ? ctx.getRequestContext().tenantId() : null;
+        LlmProvider provider = providerRegistry.getProviderWithTenantKey(routing.getProvider(), tenantId);
         if (provider == null) {
             log.error("WorkflowEngine [LLM]: Provider '{}' not registered.", routing.getProvider());
             ctx.setFinalResponse("Service Unavailable: provider not registered.");
@@ -275,14 +276,59 @@ public class WorkflowEngine {
             })
             .thenReturn(ctx)
             .onErrorResume(err -> {
-                long latencyMs = System.currentTimeMillis() - llmStart;
-                log.error("WorkflowEngine [LLM]: Call failed: {}", err.getMessage());
-                ctx.setFinalResponse("Service Unavailable: " + err.getMessage());
-                ctx.addNote("LLM failure: " + err.getMessage());
-                ctx.recordAgentTiming("LLMExecution", latencyMs);
-                // Priority 8: record failure for circuit breaker
+                log.warn("WorkflowEngine [LLM]: Primary call to {} failed: {}. Attempting fallback...",
+                         providerArm, err.getMessage());
                 healthMonitor.recordFailure(providerArm);
-                return Mono.just(ctx);
+
+                List<String> fallbacks = getFallbackModels(routing.getProvider(), routing.getModel());
+                return tryNextFallback(provider, routing.getProvider(), fallbacks, 0, ctx, llmStart, err);
             });
+    }
+
+    private Mono<AgentContext> tryNextFallback(LlmProvider provider, String providerSlug, List<String> fallbackModels,
+                                               int index, AgentContext ctx, long llmStart, Throwable primaryError) {
+        if (index >= fallbackModels.size()) {
+            long latencyMs = System.currentTimeMillis() - llmStart;
+            log.error("WorkflowEngine [LLM]: All fallbacks exhausted. Primary error: {}", primaryError.getMessage());
+            ctx.setFinalResponse("Service Unavailable: " + primaryError.getMessage());
+            ctx.addNote("LLM failure: " + primaryError.getMessage());
+            ctx.recordAgentTiming("LLMExecution", latencyMs);
+            return Mono.just(ctx);
+        }
+
+        String fallbackModel = fallbackModels.get(index);
+        String fallbackArm = providerSlug + ":" + fallbackModel;
+        log.info("WorkflowEngine [LLM]: Attempting fallback model {}/{}", providerSlug, fallbackModel);
+
+        return provider.chat(providerSlug, ctx.getMessage(), fallbackModel)
+            .doOnNext(response -> {
+                long latencyMs = System.currentTimeMillis() - llmStart;
+                ctx.setFinalResponse(response.content());
+                ctx.addNote("LLM fallback recovered using " + fallbackArm);
+                ctx.recordAgentTiming("LLMExecution", latencyMs);
+                log.info("WorkflowEngine [LLM]: Fallback succeeded on {} with {} tokens", fallbackArm, response.outputTokens());
+                healthMonitor.recordSuccess(fallbackArm, latencyMs);
+            })
+            .thenReturn(ctx)
+            .onErrorResume(fallbackErr -> {
+                log.warn("WorkflowEngine [LLM]: Fallback to {} failed: {}", fallbackArm, fallbackErr.getMessage());
+                healthMonitor.recordFailure(fallbackArm);
+                return tryNextFallback(provider, providerSlug, fallbackModels, index + 1, ctx, llmStart, primaryError);
+            });
+    }
+
+    private List<String> getFallbackModels(String providerSlug, String primaryModel) {
+        List<String> fallbacks = new ArrayList<>();
+        if ("gemini".equalsIgnoreCase(providerSlug)) {
+            if (!"gemini-2.5-flash".equalsIgnoreCase(primaryModel)) fallbacks.add("gemini-2.5-flash");
+            if (!"gemini-1.5-flash".equalsIgnoreCase(primaryModel)) fallbacks.add("gemini-1.5-flash");
+        } else if ("groq".equalsIgnoreCase(providerSlug)) {
+            if (!"llama-3.1-8b-instant".equalsIgnoreCase(primaryModel)) fallbacks.add("llama-3.1-8b-instant");
+            if (!"llama-3.3-70b-versatile".equalsIgnoreCase(primaryModel)) fallbacks.add("llama-3.3-70b-versatile");
+        } else if ("openai".equalsIgnoreCase(providerSlug)) {
+            if (!"gpt-4o-mini".equalsIgnoreCase(primaryModel)) fallbacks.add("gpt-4o-mini");
+            if (!"gpt-4o".equalsIgnoreCase(primaryModel)) fallbacks.add("gpt-4o");
+        }
+        return fallbacks;
     }
 }

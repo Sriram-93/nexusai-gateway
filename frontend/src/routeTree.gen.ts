@@ -25,6 +25,7 @@ import { Route as AppRoutingRouteImport } from './routes/app.routing'
 import { Route as AppSandboxRouteImport } from './routes/app.sandbox'
 import { Route as AppSecurityRouteImport } from './routes/app.security'
 import { Route as AppTeamLogsRouteImport } from './routes/app.team-logs'
+import { Route as AppTeamsRouteImport } from './routes/app.teams'
 import { Route as AppInspectUserIdRouteImport } from './routes/app.inspect.$userId'
 
 const IndexRoute = IndexRouteImport.update({
@@ -107,6 +108,11 @@ const AppTeamLogsRoute = AppTeamLogsRouteImport.update({
   path: '/team-logs',
   getParentRoute: () => AppRoute,
 } as any)
+const AppTeamsRoute = AppTeamsRouteImport.update({
+  id: '/teams',
+  path: '/teams',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppInspectUserIdRoute = AppInspectUserIdRouteImport.update({
   id: '/inspect/$userId',
   path: '/inspect/$userId',
@@ -129,6 +135,7 @@ export interface FileRoutesByFullPath {
   '/app/sandbox': typeof AppSandboxRoute
   '/app/security': typeof AppSecurityRoute
   '/app/team-logs': typeof AppTeamLogsRoute
+  '/app/teams': typeof AppTeamsRoute
   '/app/': typeof AppIndexRoute
   '/app/inspect/$userId': typeof AppInspectUserIdRoute
 }
@@ -147,6 +154,7 @@ export interface FileRoutesByTo {
   '/app/sandbox': typeof AppSandboxRoute
   '/app/security': typeof AppSecurityRoute
   '/app/team-logs': typeof AppTeamLogsRoute
+  '/app/teams': typeof AppTeamsRoute
   '/app': typeof AppIndexRoute
   '/app/inspect/$userId': typeof AppInspectUserIdRoute
 }
@@ -167,6 +175,7 @@ export interface FileRoutesById {
   '/app/sandbox': typeof AppSandboxRoute
   '/app/security': typeof AppSecurityRoute
   '/app/team-logs': typeof AppTeamLogsRoute
+  '/app/teams': typeof AppTeamsRoute
   '/app/': typeof AppIndexRoute
   '/app/inspect/$userId': typeof AppInspectUserIdRoute
 }
@@ -188,6 +197,7 @@ export interface FileRouteTypes {
     | '/app/sandbox'
     | '/app/security'
     | '/app/team-logs'
+    | '/app/teams'
     | '/app/'
     | '/app/inspect/$userId'
   fileRoutesByTo: FileRoutesByTo
@@ -206,6 +216,7 @@ export interface FileRouteTypes {
     | '/app/sandbox'
     | '/app/security'
     | '/app/team-logs'
+    | '/app/teams'
     | '/app'
     | '/app/inspect/$userId'
   id:
@@ -225,6 +236,7 @@ export interface FileRouteTypes {
     | '/app/sandbox'
     | '/app/security'
     | '/app/team-logs'
+    | '/app/teams'
     | '/app/'
     | '/app/inspect/$userId'
   fileRoutesById: FileRoutesById
@@ -349,6 +361,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppTeamLogsRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/teams': {
+      id: '/app/teams'
+      path: '/teams'
+      fullPath: '/app/teams'
+      preLoaderRoute: typeof AppTeamsRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/app/inspect/$userId': {
       id: '/app/inspect/$userId'
       path: '/inspect/$userId'
@@ -372,6 +391,7 @@ interface AppRouteChildren {
   AppSandboxRoute: typeof AppSandboxRoute
   AppSecurityRoute: typeof AppSecurityRoute
   AppTeamLogsRoute: typeof AppTeamLogsRoute
+  AppTeamsRoute: typeof AppTeamsRoute
   AppIndexRoute: typeof AppIndexRoute
   AppInspectUserIdRoute: typeof AppInspectUserIdRoute
 }
@@ -389,6 +409,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppSandboxRoute: AppSandboxRoute,
   AppSecurityRoute: AppSecurityRoute,
   AppTeamLogsRoute: AppTeamLogsRoute,
+  AppTeamsRoute: AppTeamsRoute,
   AppIndexRoute: AppIndexRoute,
   AppInspectUserIdRoute: AppInspectUserIdRoute,
 }

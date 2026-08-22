@@ -11,6 +11,8 @@ import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import com.llm.nexusai_gateway.Repository.ProviderConfigRepository;
+
 /**
  * Enterprise Policy Filter — filters eligible providers before routing.
  *
@@ -29,6 +31,12 @@ public class PolicyFilter {
 
     @Value("${nexusai.policy.blocked-providers:}")
     private String blockedProvidersStr;
+
+    private final ProviderConfigRepository providerConfigRepository;
+
+    public PolicyFilter(ProviderConfigRepository providerConfigRepository) {
+        this.providerConfigRepository = providerConfigRepository;
+    }
 
     /**
      * Filter the list of all available providers down to those permitted
@@ -52,11 +60,29 @@ public class PolicyFilter {
                 String base = p.contains(":") ? p.split(":")[0] : p;
                 return !blocked.contains(base);
             })
+            .filter(p -> {
+                if (context == null || context.tenantId() == null) return true;
+                String base = p.contains(":") ? p.split(":")[0] : p;
+                
+                List<com.llm.nexusai_gateway.Provider.ProviderConfig> tenantConfigs = 
+                    providerConfigRepository.findByTenantId(context.tenantId());
+                    
+                if (!tenantConfigs.isEmpty()) {
+                    // Tenant has explicitly configured their providers in DB (BYOK).
+                    // Only allow providers that the tenant has added and enabled.
+                    return tenantConfigs.stream()
+                        .anyMatch(c -> c.getSlug().equalsIgnoreCase(base) && c.isEnabled());
+                }
+                
+                // If tenant has no DB configs yet, check per-slug config or default
+                return providerConfigRepository.findBySlugAndTenantId(base, context.tenantId())
+                    .map(config -> config.isEnabled())
+                    .orElse(true);
+            })
             .collect(Collectors.toList());
 
         if (eligible.isEmpty()) {
-            log.warn("Policy filter removed all providers. Falling back to full list.");
-            return allProviders.stream().map(String::toLowerCase).collect(Collectors.toList());
+            log.warn("Policy filter removed all providers for tenant {}.", context != null ? context.tenantId() : "global");
         }
 
         log.debug("Policy filter: {} providers eligible out of {} total", eligible.size(), allProviders.size());

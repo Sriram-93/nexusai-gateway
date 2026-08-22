@@ -1,11 +1,11 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { motion } from "motion/react";
-import { useState } from "react";
-import { Brain, Play, Sparkles, Terminal, Zap } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Brain, Play, Sparkles, Terminal, Zap, AlertTriangle, ArrowRight } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { chatApi, type ChatResponse, type ApiError as ApiErr } from "@/lib/api";
+import { chatApi, providersApi, type ChatResponse, type ApiError as ApiErr } from "@/lib/api";
 
 export const Route = createFileRoute("/app/sandbox")({
   head: () => ({
@@ -31,6 +31,16 @@ function Sandbox() {
   const [result, setResult] = useState<ChatResponse | null>(null);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [providerStatus, setProviderStatus] = useState<{ readyToChat: boolean; connectedCount: number } | null>(null);
+  const [statusLoading, setStatusLoading] = useState(true);
+
+  // Pre-flight: check if this tenant has at least one provider with a key
+  useEffect(() => {
+    providersApi.getStatus()
+      .then(s => setProviderStatus(s))
+      .catch(() => setProviderStatus({ readyToChat: false, connectedCount: 0 }))
+      .finally(() => setStatusLoading(false));
+  }, []);
 
   const run = async () => {
     if (!prompt.trim()) return;
@@ -47,7 +57,7 @@ function Sandbox() {
       setResult(response);
     } catch (err: any) {
       if (err.status === 401) {
-        setError("No API key configured. Go to API Keys and provision a tenant first.");
+        setError("Authentication failed. Please refresh and sign in again.");
       } else if (err.status === 402) {
         setError("Budget exhausted for this tenant.");
       } else if (err.status === 429) {
@@ -62,6 +72,31 @@ function Sandbox() {
 
   return (
     <AppShell title="Sandbox" subtitle="Dry-run a prompt through the live routing plane">
+      {/* Pre-flight gate */}
+      {statusLoading && (
+        <div className="h-2 w-full rounded-full bg-[var(--glass-hover)] overflow-hidden mb-4">
+          <motion.div className="h-full w-1/2 rounded-full bg-cyan/40" animate={{ x: ["0%", "150%"] }} transition={{ duration: 1.2, repeat: Infinity, ease: "easeInOut" }} />
+        </div>
+      )}
+
+      {!statusLoading && !providerStatus?.readyToChat && (
+        <motion.div
+          initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+          className="mb-6 flex items-start gap-4 rounded-2xl border border-amber/30 bg-amber/5 p-5"
+        >
+          <AlertTriangle className="h-5 w-5 text-amber shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-amber">No provider connected</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              The Sandbox routes requests through your configured AI providers. You need to connect at least one provider and add an API key before you can run test requests.
+            </p>
+            <Link to="/app/providers" className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-cyan hover:underline">
+              Go to Providers Hub <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+          </div>
+        </motion.div>
+      )}
+
       <div className="grid gap-4 lg:grid-cols-2">
         {/* Request panel */}
         <div className="glass rounded-2xl p-6">
@@ -79,7 +114,7 @@ function Sandbox() {
           <motion.div whileHover={{ scale: 1.015 }} whileTap={{ scale: 0.98 }} className="mt-4">
             <Button
               onClick={run}
-              disabled={running || !prompt.trim()}
+              disabled={running || !prompt.trim() || !providerStatus?.readyToChat}
               className="grad-primary h-10 w-full rounded-xl text-sm text-primary-foreground transition-shadow hover:shadow-[0_0_34px_-6px_var(--cyan)]"
             >
               <Play className="mr-1.5 h-4 w-4" />

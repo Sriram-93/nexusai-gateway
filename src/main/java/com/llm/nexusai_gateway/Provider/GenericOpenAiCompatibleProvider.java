@@ -51,13 +51,18 @@ public class GenericOpenAiCompatibleProvider implements LlmProvider {
      */
     @Override
     public Mono<ProviderResponse> chat(String providerSlug, String message, String modelName) {
-        return providerConfigRepository.findBySlug(providerSlug)
-            .map(config -> executeChat(config, message, modelName))
+        return chatWithKey(providerSlug, message, modelName, null);
+    }
+
+    @Override
+    public Mono<ProviderResponse> chatWithKey(String providerSlug, String message, String modelName, String overrideApiKey) {
+        return providerConfigRepository.findBySlug(providerSlug) // Note: this fetches global config if tenantId is missing, but it is acceptable if the key is overridden
+            .map(config -> executeChat(config, message, modelName, overrideApiKey))
             .orElseGet(() -> Mono.error(new IllegalArgumentException(
                 "Provider with slug '" + providerSlug + "' not found in registry.")));
     }
 
-    private Mono<ProviderResponse> executeChat(ProviderConfig config, String message, String modelName) {
+    private Mono<ProviderResponse> executeChat(ProviderConfig config, String message, String modelName, String overrideApiKey) {
         String baseUrl = config.getBaseUrl();
         if (baseUrl == null || baseUrl.isBlank()) {
             return Mono.error(new IllegalArgumentException(
@@ -84,10 +89,13 @@ public class GenericOpenAiCompatibleProvider implements LlmProvider {
             "messages", List.of(Map.of("role", "user", "content", message))
         );
 
+        String activeKey = (overrideApiKey != null && !overrideApiKey.isBlank()) ? overrideApiKey : config.getApiKey();
+
         return webClient.post()
             .uri(endpoint)
             .attribute("providerConfig", config)
             .header("Content-Type", "application/json")
+            .header("Authorization", "Bearer " + activeKey)
             .bodyValue(body)
             .retrieve()
             .bodyToMono(Map.class)

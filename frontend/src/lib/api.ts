@@ -161,6 +161,12 @@ export interface ProviderSummary {
   hasKey: boolean;
 }
 
+export interface ProviderStatus {
+  hasProviders: boolean;
+  readyToChat: boolean;
+  connectedCount: number;
+}
+
 export interface ModelSummary {
   modelId: string;
   armKey: string;
@@ -216,6 +222,48 @@ export interface ProviderRegistrationRequest {
   baseUrl?: string;
   apiKey?: string;
   region?: string;
+}
+
+export interface UserContextValue {
+  token: string | null;
+  role: "SOLO" | "ORG_ADMIN" | "TEAM_LEAD" | "TEAM_MEMBER" | null;
+  tenantId: string | null;
+  email: string | null;
+  orgId: string | null;
+  setAuth: (
+    token: string,
+    role: string,
+    tenantId: string,
+    email: string,
+    orgId: string,
+  ) => void;
+  logout: () => void;
+}
+
+export interface TeamMember {
+  userId: string;
+  email: string;
+  role: string;
+  joinedAt: string;
+  totalRequests?: number;
+}
+
+export interface TeamSummary {
+  id: string;
+  name: string;
+  description: string;
+  leadEmail: string;
+  leadUserId: string;
+  active: boolean;
+  createdAt: string;
+  memberCount: number;
+  tenantId: string;
+  hasKey: boolean;
+  keyActive: boolean;
+  members?: TeamMember[];
+  totalRequests?: number;
+  totalCostUsd?: number;
+  avgLatencyMs?: number;
 }
 
 export interface SignupRequest {
@@ -318,6 +366,12 @@ export const providersApi = {
       { method: "POST" },
     ),
   listUnpricedModels: () => request<string[]>("/api/providers/pricing/unverified"),
+  getStatus: () => request<ProviderStatus>("/api/providers/status"),
+  deleteProvider: (slug: string) =>
+    request<{ message: string; modelsDisabled: number }>(
+      `/api/providers/${slug}`,
+      { method: "DELETE" },
+    ),
 };
 
 // ─── Chat API ─────────────────────────────────────────────────────────────────
@@ -416,4 +470,55 @@ export const adminApi = {
       method: "POST",
       body: JSON.stringify({ email, password, role })
     })
+};
+
+// ─── Teams API ────────────────────────────────────────────────────────────────
+
+export const teamsApi = {
+  createTeam: (name: string, description: string) =>
+    request<TeamSummary>("/api/admin/teams", {
+      method: "POST",
+      body: JSON.stringify({ name, description }),
+    }),
+  listTeams: () => request<TeamSummary[]>("/api/admin/teams"),
+  getTeam: (teamId: string) => request<TeamSummary>(`/api/admin/teams/${teamId}`),
+  assignLead: (teamId: string, email: string) =>
+    request<{ message: string; userId: string; isNewUser: boolean }>(
+      `/api/admin/teams/${teamId}/lead`,
+      { method: "POST", body: JSON.stringify({ email }) },
+    ),
+  addMember: (teamId: string, email: string, role: string) =>
+    request<{ message: string; userId: string; role: string; isNewUser: boolean }>(
+      `/api/admin/teams/${teamId}/members`,
+      { method: "POST", body: JSON.stringify({ email, role }) },
+    ),
+  removeMember: (teamId: string, userId: string) =>
+    request<{ message: string }>(`/api/admin/teams/${teamId}/members/${userId}`, {
+      method: "DELETE",
+    }),
+  generateKey: (teamId: string) =>
+    request<{ rawKey: string; tenantId: string; emailedTo: string }>(
+      `/api/admin/teams/${teamId}/generate-key`,
+      { method: "POST" },
+    ),
+  enableKey: (teamId: string) =>
+    request<{ keyActive: boolean }>(`/api/admin/teams/${teamId}/key/enable`, {
+      method: "PATCH",
+    }),
+  disableKey: (teamId: string) =>
+    request<{ keyActive: boolean }>(`/api/admin/teams/${teamId}/key/disable`, {
+      method: "PATCH",
+    }),
+  resendKeyEmail: (teamId: string, rawKey?: string) =>
+    request<{ message: string }>(`/api/admin/teams/${teamId}/key/email`, {
+      method: "POST",
+      body: rawKey ? JSON.stringify({ rawKey }) : undefined,
+    }),
+  updateStatus: (teamId: string, active: boolean) =>
+    request<{ active: boolean }>(`/api/admin/teams/${teamId}/status`, {
+      method: "PATCH",
+      body: JSON.stringify({ active }),
+    }),
+  getAnalytics: () => request<TeamSummary[]>("/api/admin/teams/analytics"),
+  getMyTeam: () => request<TeamSummary>("/api/my-team"),
 };

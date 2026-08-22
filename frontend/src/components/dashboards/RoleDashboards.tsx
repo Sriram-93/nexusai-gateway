@@ -144,32 +144,57 @@ const fmtRequests = (n: number) =>
 
 export function PlatformDashboard({ metrics, logs, live, setLive }: DashboardProps) {
   return (
-    <AppShell title="Platform Dashboard" subtitle="Global Command Center">
+    <AppShell title="Universal Command Center" subtitle="Global AI Routing & Algorithm Telemetry">
       <div className="mb-5">
         <UpgradeRequestsPanel />
       </div>
       
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="Total Organizations" value="1,284" delta={12} icon={Building2} tone="indigo" spark={[800, 900, 1000, 1100, 1200, 1250, 1284]} />
-        <MetricCard label="Active Users" value="8,421" delta={4.2} icon={Users} tone="cyan" spark={[7000, 7200, 7500, 7800, 8000, 8200, 8421]} />
         <MetricCard label="Global Requests" value={metrics ? fmtRequests(metrics.totalRequests * 10) : "—"} delta={18} icon={Radio} tone="emerald" spark={[0, 0, 0, 0, 0, 0, 0, metrics?.totalRequests ?? 0]} />
-        <MetricCard label="Platform Revenue" value={metrics ? `$${(metrics.totalCostUsd * 2.5).toFixed(2)}` : "—"} delta={8} icon={CircleDollarSign} tone="amber" spark={[0, 0, 0, 0, 0, 0, 0, metrics?.totalCostUsd ?? 0]} />
+        <MetricCard label="Global Latency Avg" value={metrics ? `${Math.round(metrics.avgLatencyMs)}ms` : "—"} delta={-12} icon={Gauge} tone="cyan" spark={[0, 0, 0, 0, 0, 0, 0, metrics?.avgLatencyMs ?? 0]} />
+        <MetricCard label="Algorithm Adjustments" value="14,239" delta={8} icon={Brain} tone="indigo" spark={[12000, 12500, 13000, 13200, 13800, 14000, 14239]} />
+        <MetricCard label="Cost Optimization" value={metrics ? `-$${(metrics.totalCostUsd * 0.4).toFixed(2)}` : "—"} delta={-15} icon={CircleDollarSign} tone="amber" spark={[0, 0, 0, 0, 0, 0, 0, metrics?.totalCostUsd ?? 0]} />
       </div>
 
-      <div className="mt-6 grid gap-4 md:grid-cols-2">
+      <div className="mt-6 flex flex-col gap-4">
         <div className="glass rounded-2xl p-5">
-          <h3 className="text-sm font-medium mb-4 flex items-center gap-2"><Server className="h-4 w-4 text-cyan" /> Provider Health</h3>
-          <div className="space-y-3">
-            <div className="flex justify-between items-center text-sm"><span className="text-muted-foreground">OpenAI</span><span className="text-emerald font-medium flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-emerald"></span> Healthy</span></div>
-            <div className="flex justify-between items-center text-sm"><span className="text-muted-foreground">Anthropic</span><span className="text-emerald font-medium flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-emerald"></span> Healthy</span></div>
-            <div className="flex justify-between items-center text-sm"><span className="text-muted-foreground">Groq</span><span className="text-amber font-medium flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-amber"></span> Degraded</span></div>
+          <h3 className="text-sm font-medium mb-4 flex items-center gap-2"><Brain className="h-4 w-4 text-indigo" /> Global Algorithm State</h3>
+          <div className="flex flex-wrap items-center gap-6 text-xs">
+            <div className="flex items-center gap-2">
+              <span className="text-muted-foreground">Active Strategy</span>
+              <span className="font-mono text-cyan">MULTI_ARMED_BANDIT (Thompson Sampling)</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-muted-foreground">Global Engine</span>
+              <span className="font-mono text-cyan">Nexus_V3_Distributed</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-muted-foreground">Active Models</span>
+              <span className="font-mono text-emerald">124</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-muted-foreground">Learning Rate</span>
+              <span className="font-mono text-amber">Dynamic (α=0.1, β=0.9)</span>
+            </div>
           </div>
         </div>
-        <div className="glass rounded-2xl p-5">
-          <h3 className="text-sm font-medium mb-4 flex items-center gap-2"><AlertTriangle className="h-4 w-4 text-amber" /> System Alerts</h3>
-          <div className="space-y-3">
-             <div className="flex justify-between items-center text-sm"><span className="text-muted-foreground">Groq latency spike detected</span><span className="text-xs text-amber font-mono">2m ago</span></div>
-             <div className="flex justify-between items-center text-sm"><span className="text-muted-foreground">New organization signed up</span><span className="text-xs text-cyan font-mono">15m ago</span></div>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="glass rounded-2xl p-5">
+            <h3 className="text-sm font-medium mb-4 flex items-center gap-2"><Server className="h-4 w-4 text-cyan" /> Top Provider Health</h3>
+            <div className="space-y-3">
+              <div className="flex justify-between items-center text-sm"><span className="text-muted-foreground">OpenAI</span><span className="text-emerald font-medium flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-emerald"></span> Healthy</span></div>
+              <div className="flex justify-between items-center text-sm"><span className="text-muted-foreground">Anthropic</span><span className="text-emerald font-medium flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-emerald"></span> Healthy</span></div>
+              <div className="flex justify-between items-center text-sm"><span className="text-muted-foreground">Groq</span><span className="text-amber font-medium flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-amber"></span> Degraded</span></div>
+            </div>
+          </div>
+          <div className="glass rounded-2xl p-5">
+            <h3 className="text-sm font-medium mb-4 flex items-center gap-2"><Activity className="h-4 w-4 text-amber" /> Algorithm Telemetry Stream</h3>
+            <div className="space-y-3">
+               <div className="flex justify-between items-center text-sm"><span className="text-muted-foreground">Penalty applied to Groq (Latency &gt; 800ms)</span><span className="text-xs text-amber font-mono">2m ago</span></div>
+               <div className="flex justify-between items-center text-sm"><span className="text-muted-foreground">Shifted 40% traffic to Claude-3.5-Haiku</span><span className="text-xs text-cyan font-mono">5m ago</span></div>
+               <div className="flex justify-between items-center text-sm"><span className="text-muted-foreground">Exploration phase triggered for Gemini-1.5</span><span className="text-xs text-indigo font-mono">15m ago</span></div>
+            </div>
           </div>
         </div>
       </div>
