@@ -68,7 +68,15 @@ public class GroqProvider implements LlmProvider {
                 .bodyValue(body)
                 .retrieve()
                 .bodyToMono(Map.class)
-                .retryWhen(Retry.backoff(2, Duration.ofSeconds(1)))
+                .retryWhen(Retry.backoff(2, Duration.ofSeconds(1))
+                        .filter(e -> {
+                            if (e instanceof org.springframework.web.reactive.function.client.WebClientResponseException) {
+                                org.springframework.web.reactive.function.client.WebClientResponseException ex = (org.springframework.web.reactive.function.client.WebClientResponseException) e;
+                                return ex.getStatusCode().is5xxServerError() || ex.getStatusCode().value() == 429;
+                            }
+                            return true; // Retry on IOExceptions, connection resets, etc.
+                        })
+                )
                 .map(response -> {
                     try {
                         List<Map<String, Object>> choices = (List<Map<String, Object>>) response.get("choices");

@@ -10,19 +10,34 @@ import reactor.core.scheduler.Schedulers;
 import java.time.LocalDateTime;
 import java.util.List;
 
+import org.springframework.data.redis.core.StringRedisTemplate;
+import com.llm.nexusai_gateway.Team.TeamRepository;
+import com.llm.nexusai_gateway.Team.Team;
+import java.time.LocalDate;
+import java.util.Optional;
+
 @Service
 public class LoggingService {
 
     private final RequestLogRepository repository;
     private final MetricsService metricsService;
     private final ModelRegistry modelRegistry;
+    private final StringRedisTemplate redisTemplate;
+    private final NotificationService notificationService;
+    private final TeamRepository teamRepository;
 
     public LoggingService(RequestLogRepository repository,
                           MetricsService metricsService,
-                          ModelRegistry modelRegistry) {
+                          ModelRegistry modelRegistry,
+                          StringRedisTemplate redisTemplate,
+                          NotificationService notificationService,
+                          TeamRepository teamRepository) {
         this.repository = repository;
         this.metricsService = metricsService;
         this.modelRegistry = modelRegistry;
+        this.redisTemplate = redisTemplate;
+        this.notificationService = notificationService;
+        this.teamRepository = teamRepository;
     }
 
     /**
@@ -48,8 +63,44 @@ public class LoggingService {
                 recordFallbackMetrics(saved);
             }
 
+            // --- REDIS COST ACCUMULATOR ---
+            if (saved.getTenantId() != null && saved.getCostUsd() > 0) {
+                try {
+                    String dateStr = LocalDate.now().toString();
+                    String redisKey = "nexus:budget:team:" + saved.getTenantId() + ":" + dateStr;
+                    Double currentSpend = redisTemplate.opsForValue().increment(redisKey, saved.getCostUsd());
+                    
+                    // Check for 80% threshold to alert
+                    if (currentSpend != null) {
+                        checkAndTriggerBudgetAlert(saved.getTenantId(), currentSpend);
+                    }
+                } catch (Exception e) {
+                    // Ignore Redis failures to not break request logging
+                }
+            }
+
             return saved;
         }).subscribeOn(Schedulers.boundedElastic());
+    }
+
+    private void checkAndTriggerBudgetAlert(String tenantId, double currentSpend) {
+        teamRepository.findByTenantId(tenantId).ifPresent(team -> {
+            if (team.getDailyBudgetUsd() == null) return;
+            
+            double threshold = team.getDailyBudgetUsd() * 0.8;
+            if (currentSpend >= threshold) {
+                LocalDate today = LocalDate.now();
+                if (team.getBudgetAlertSentDate() == null || !team.getBudgetAlertSentDate().equals(today)) {
+                    // Send alert via NotificationService
+                    if (team.getLeadEmail() != null) {
+                        notificationService.sendBudgetWarning(team.getLeadEmail(), team.getName(), currentSpend, team.getDailyBudgetUsd());
+                    }
+                    
+                    team.setBudgetAlertSentDate(today);
+                    teamRepository.save(team);
+                }
+            }
+        });
     }
 
     public List<RequestLog> getAllLogs() {

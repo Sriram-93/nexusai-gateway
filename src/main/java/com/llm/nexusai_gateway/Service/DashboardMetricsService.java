@@ -5,6 +5,9 @@ import com.llm.nexusai_gateway.Decision.RoutingEngineManager;
 import com.llm.nexusai_gateway.Agent.AgentRegistry;
 import com.llm.nexusai_gateway.Provider.ModelRegistry;
 import com.llm.nexusai_gateway.Reward.RewardCalculator;
+import com.llm.nexusai_gateway.Team.TeamRepository;
+import com.llm.nexusai_gateway.Team.TeamMembershipRepository;
+import com.llm.nexusai_gateway.Tenant.TenantRegistry;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
@@ -18,17 +21,26 @@ public class DashboardMetricsService {
     private final AgentRegistry agentRegistry;
     private final ModelRegistry modelRegistry;
     private final RewardCalculator rewardCalculator;
+    private final TeamRepository teamRepository;
+    private final TeamMembershipRepository teamMembershipRepository;
+    private final TenantRegistry tenantRegistry;
 
     public DashboardMetricsService(RequestLogRepository logRepository,
                                    RoutingEngineManager routingEngineManager,
                                    AgentRegistry agentRegistry,
                                    ModelRegistry modelRegistry,
-                                   RewardCalculator rewardCalculator) {
+                                   RewardCalculator rewardCalculator,
+                                   TeamRepository teamRepository,
+                                   TeamMembershipRepository teamMembershipRepository,
+                                   TenantRegistry tenantRegistry) {
         this.logRepository = logRepository;
         this.routingEngineManager = routingEngineManager;
         this.agentRegistry = agentRegistry;
         this.modelRegistry = modelRegistry;
         this.rewardCalculator = rewardCalculator;
+        this.teamRepository = teamRepository;
+        this.teamMembershipRepository = teamMembershipRepository;
+        this.tenantRegistry = tenantRegistry;
     }
 
     public Map<String, Object> getGlobalMetrics() {
@@ -50,6 +62,27 @@ public class DashboardMetricsService {
         m.put("activeEngine",    routingEngineManager.getActiveEngineClass());
         m.put("rewardTier",      rewardCalculator.getActiveTier());
         m.put("enabledArmCount", modelRegistry.getEnabledArmKeys().size());
+        
+        if (tenantId != null) {
+            tenantRegistry.get(tenantId).ifPresent(config -> {
+                String orgId = config.getOrganizationId();
+                if (orgId != null) {
+                    m.put("activeTeams", teamRepository.findActiveByOrganizationId(orgId).size());
+                } else {
+                    m.put("activeTeams", 0);
+                }
+                
+                // Add budget info for Team dashboards
+                m.put("dailyBudgetUsd", config.getDailyBudgetUsd());
+            });
+            
+            // Add team members count for Team dashboards
+            teamRepository.findByTenantId(tenantId).ifPresent(team -> {
+                m.put("teamMembersCount", teamMembershipRepository.countByTeamId(team.getId()));
+            });
+        } else {
+            m.put("activeTeams", teamRepository.count());
+        }
 
         return m;
     }

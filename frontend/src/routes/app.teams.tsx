@@ -7,7 +7,7 @@ import {
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { teamsApi, type TeamSummary, type TeamMember } from "@/lib/api";
+import { teamsApi, adminApi, type TeamSummary, type TeamMember } from "@/lib/api";
 import { useUser } from "@/lib/user-context";
 
 export const Route = createFileRoute("/app/teams")({
@@ -37,6 +37,7 @@ function TeamsPage() {
   const [leadEmail, setLeadEmail] = useState("");
   const [memberEmail, setMemberEmail] = useState("");
   const [memberRole, setMemberRole] = useState("TEAM_MEMBER");
+  const [budgetInput, setBudgetInput] = useState<string>("");
 
   const loadTeams = async () => {
     setLoading(true);
@@ -50,7 +51,12 @@ function TeamsPage() {
     }
   };
 
-  useEffect(() => { loadTeams(); }, []);
+  const [orgMembers, setOrgMembers] = useState<any[]>([]);
+
+  useEffect(() => { 
+    loadTeams(); 
+    adminApi.getMembers().then(setOrgMembers).catch(console.error);
+  }, []);
 
   const handleCreateTeam = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -70,6 +76,7 @@ function TeamsPage() {
       const data = await teamsApi.getTeam(teamId);
       setSelectedTeam(data);
       setTeamMembers(data.members || []);
+      setBudgetInput(data.dailyBudgetUsd ? data.dailyBudgetUsd.toString() : "");
     } catch (err: any) {
       alert("Failed to load team details");
     }
@@ -143,8 +150,38 @@ function TeamsPage() {
     }
   };
 
+  const handleUpdateBudget = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedTeam) return;
+    try {
+      const budgetVal = budgetInput.trim() === "" ? null : parseFloat(budgetInput);
+      await teamsApi.updateTeamBudget(selectedTeam.id, budgetVal);
+      loadTeamDetails(selectedTeam.id);
+      alert("Team budget updated successfully.");
+    } catch (err: any) {
+      alert(err.message || "Failed to update budget");
+    }
+  };
+
+  const handleDeleteTeam = async () => {
+    if (!selectedTeam || !confirm("Are you sure you want to completely delete this team? This action cannot be undone.")) return;
+    try {
+      await teamsApi.deleteTeam(selectedTeam.id);
+      setSelectedTeam(null);
+      loadTeams();
+    } catch (err: any) {
+      alert(err.message || "Failed to delete team");
+    }
+  };
+
   return (
     <AppShell title="Teams" subtitle="Organization teams, members, and API access">
+      <datalist id="org-members-list">
+        {orgMembers.map(m => (
+          <option key={m.id} value={m.email} />
+        ))}
+      </datalist>
+
       {/* Create Team Form */}
       {showCreate && (
         <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="mb-6 glass p-6 rounded-2xl border border-[var(--glass-border)]">
@@ -218,6 +255,24 @@ function TeamsPage() {
                     <p className="text-sm font-medium text-amber">{team.avgLatencyMs ? Math.round(team.avgLatencyMs) : 0}ms</p>
                   </div>
                 </div>
+
+                {/* Progress bar for budget */}
+                {team.dailyBudgetUsd && team.dailyBudgetUsd > 0 && (
+                  <div className="mt-4 pt-4 border-t border-[var(--glass-border)]">
+                    <div className="flex justify-between text-[0.65rem] uppercase tracking-wider mb-1">
+                      <span className="text-muted-foreground">Budget Usage</span>
+                      <span className={(team.totalCostUsd || 0) >= team.dailyBudgetUsd * 0.8 ? "text-amber" : "text-emerald"}>
+                        ${(team.totalCostUsd || 0).toFixed(2)} / ${team.dailyBudgetUsd.toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
+                      <div 
+                        className={`h-full ${(team.totalCostUsd || 0) >= team.dailyBudgetUsd ? "bg-destructive" : (team.totalCostUsd || 0) >= team.dailyBudgetUsd * 0.8 ? "bg-amber" : "bg-emerald"}`}
+                        style={{ width: `${Math.min(100, ((team.totalCostUsd || 0) / team.dailyBudgetUsd) * 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
               </motion.div>
             ))}
           </div>
@@ -233,7 +288,12 @@ function TeamsPage() {
           ) : (
             <div className="p-6">
               <div className="mb-6">
-                <h2 className="text-lg font-semibold tracking-tight text-cyan mb-1">{selectedTeam.name}</h2>
+                <div className="flex items-center justify-between mb-1">
+                  <h2 className="text-lg font-semibold tracking-tight text-cyan">{selectedTeam.name}</h2>
+                  <Button variant="ghost" size="sm" onClick={handleDeleteTeam} className="h-8 text-xs text-destructive hover:text-destructive hover:bg-destructive/10">
+                    <Trash2 className="h-3.5 w-3.5 mr-1" /> Delete Team
+                  </Button>
+                </div>
                 <p className="text-xs text-muted-foreground mb-4">{selectedTeam.description || "No description provided."}</p>
                 
                 {/* Team Lead Section */}
@@ -249,10 +309,43 @@ function TeamsPage() {
                     </div>
                   ) : (
                     <form onSubmit={handleAssignLead} className="flex gap-2">
-                      <Input value={leadEmail} onChange={e => setLeadEmail(e.target.value)} type="email" placeholder="lead@company.com" required className="h-8 text-xs bg-[var(--glass-bg)]" />
+                      <select 
+                        value={leadEmail} 
+                        onChange={e => setLeadEmail(e.target.value)} 
+                        required 
+                        className="flex h-8 w-full rounded-md border border-[var(--glass-border)] bg-[var(--glass-bg)] px-3 py-1 text-xs shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan"
+                      >
+                        <option value="" disabled>Select an existing member</option>
+                        {orgMembers.map(m => (
+                          <option key={m.id} value={m.email}>{m.email} ({m.role.replace('_', ' ')})</option>
+                        ))}
+                      </select>
                       <Button type="submit" size="sm" className="h-8 text-xs bg-indigo hover:bg-indigo/80 text-white">Assign</Button>
                     </form>
                   )}
+                </div>
+
+                {/* Budget Controls */}
+                <div className="bg-[var(--glass-hover)] rounded-xl p-4 border border-[var(--glass-border)] mb-6">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Activity className="h-4 w-4 text-emerald" />
+                    <h3 className="text-xs font-semibold uppercase tracking-wider">Budget Allocation</h3>
+                  </div>
+                  <form onSubmit={handleUpdateBudget} className="flex gap-2">
+                    <Input 
+                      value={budgetInput} 
+                      onChange={e => setBudgetInput(e.target.value)} 
+                      type="number" 
+                      step="0.01" 
+                      min="0"
+                      placeholder="Unlimited" 
+                      className="h-8 text-xs bg-[var(--glass-bg)]" 
+                    />
+                    <Button type="submit" size="sm" className="h-8 text-xs bg-emerald hover:bg-emerald/80 text-white">Save Limit</Button>
+                  </form>
+                  <p className="text-[0.65rem] text-muted-foreground mt-2">
+                    Set a daily USD limit. If exceeded, API calls will be suspended until midnight. Leave empty for unlimited.
+                  </p>
                 </div>
 
                 {/* API Key Management */}
@@ -295,7 +388,17 @@ function TeamsPage() {
                   </div>
                   
                   <form onSubmit={handleAddMember} className="flex gap-2 mb-4">
-                    <Input value={memberEmail} onChange={e => setMemberEmail(e.target.value)} type="email" placeholder="New member email" required className="h-8 text-xs bg-[var(--glass-bg)]" />
+                    <select 
+                      value={memberEmail} 
+                      onChange={e => setMemberEmail(e.target.value)} 
+                      required 
+                      className="flex h-8 w-full rounded-md border border-[var(--glass-border)] bg-[var(--glass-bg)] px-3 py-1 text-xs shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan"
+                    >
+                      <option value="" disabled>Select an existing member</option>
+                      {orgMembers.filter(m => m.role !== 'ORG_ADMIN').map(m => (
+                        <option key={m.id} value={m.email}>{m.email} ({m.role.replace('_', ' ')})</option>
+                      ))}
+                    </select>
                     <Button type="submit" size="sm" variant="secondary" className="h-8 w-8 p-0 shrink-0"><Plus className="h-4 w-4" /></Button>
                   </form>
 

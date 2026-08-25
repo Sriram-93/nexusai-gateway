@@ -18,4 +18,6 @@ public interface TeamRepository extends JpaRepository<Team, String> {
 
     @Query("SELECT t FROM Team t WHERE t.organizationId = :orgId AND t.active = true")
     List<Team> findActiveByOrganizationId(@Param("orgId") String orgId);
+
+    Optional<Team> findByTenantId(String tenantId);
 }

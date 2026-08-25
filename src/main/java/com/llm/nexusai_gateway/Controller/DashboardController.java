@@ -44,6 +44,7 @@ public class DashboardController {
     private final ModelRegistry modelRegistry;
     private final DashboardMetricsService metricsService;
     private final com.llm.nexusai_gateway.Security.JwtUtil jwtUtil;
+    private final com.llm.nexusai_gateway.Repository.ProviderConfigRepository providerConfigRepository;
 
     public DashboardController(RequestLogRepository logRepository,
                                ReputationService reputationService,
@@ -53,7 +54,8 @@ public class DashboardController {
                                AgentRegistry agentRegistry,
                                ModelRegistry modelRegistry,
                                DashboardMetricsService metricsService,
-                               com.llm.nexusai_gateway.Security.JwtUtil jwtUtil) {
+                               com.llm.nexusai_gateway.Security.JwtUtil jwtUtil,
+                               com.llm.nexusai_gateway.Repository.ProviderConfigRepository providerConfigRepository) {
         this.logRepository = logRepository;
         this.reputationService = reputationService;
         this.circuitBreakerRegistry = circuitBreakerRegistry;
@@ -63,6 +65,7 @@ public class DashboardController {
         this.modelRegistry = modelRegistry;
         this.metricsService = metricsService;
         this.jwtUtil = jwtUtil;
+        this.providerConfigRepository = providerConfigRepository;
     }
 
     // ─── 1. Top-level metric cards ────────────────────────────────────────────
@@ -107,12 +110,27 @@ public class DashboardController {
      * Returns hasData=false for arms that have not yet received any requests.
      */
     @GetMapping("/models")
-    public Mono<List<Map<String, Object>>> getModels() {
+    public Mono<List<Map<String, Object>>> getModels(
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
         return Mono.fromCallable(() -> {
+            io.jsonwebtoken.Claims claims = extractClaims(authHeader);
+            String tenantId = claims != null ? claims.get("tenantId", String.class) : null;
+            
+            Set<String> tenantProviderSlugs = (tenantId != null) 
+                ? providerConfigRepository.findByTenantId(tenantId).stream()
+                    .map(com.llm.nexusai_gateway.Provider.ProviderConfig::getSlug).collect(Collectors.toSet())
+                : Collections.emptySet();
+
             Map<String, ProviderReputation> all = reputationService.getAll();
             List<String> enabledArms = modelRegistry.getEnabledArmKeys();
 
-            return enabledArms.stream().map(armKey -> {
+            return enabledArms.stream()
+                .filter(armKey -> {
+                    if (tenantId == null) return true; // global view (fallback)
+                    String providerSlug = armKey.contains(":") ? armKey.split(":")[0] : armKey;
+                    return tenantProviderSlugs.contains(providerSlug);
+                })
+                .map(armKey -> {
                 String providerSlug = armKey.contains(":") ? armKey.split(":")[0] : armKey;
                 String modelId      = armKey.contains(":") ? armKey.split(":")[1] : armKey;
 
@@ -162,7 +180,8 @@ public class DashboardController {
             } else {
                 String role = claims.get("role", String.class);
                 String tenantId = claims.get("tenantId", String.class);
-                String userId = claims.getSubject();
+                String userId = claims.get("userId", String.class);
+                if (userId == null) userId = claims.getSubject();
                 
                 if ("TEAM_MEMBER".equals(role)) {
                     logs = logRepository.findTop100ByTenantIdAndUserIdOrderByIdDesc(tenantId, userId);
@@ -197,10 +216,27 @@ public class DashboardController {
      * Frontend connects via EventSource — no WebSocket needed.
      */
     @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public Flux<Map<String, Object>> streamActivity() {
+    public Flux<Map<String, Object>> streamActivity(
+            @RequestParam(value = "token", required = false) String token) {
         return Flux.interval(Duration.ofSeconds(3))
             .flatMap(tick -> Mono.fromCallable(() -> {
-                List<RequestLog> recent = logRepository.findTop50ByOrderByIdDesc();
+                io.jsonwebtoken.Claims claims = token != null ? extractClaims("Bearer " + token) : null;
+                List<RequestLog> recent;
+                
+                if (claims == null) {
+                    recent = logRepository.findTop50ByOrderByIdDesc();
+                } else {
+                    String role = claims.get("role", String.class);
+                    String tenantId = claims.get("tenantId", String.class);
+                    String userId = claims.get("userId", String.class);
+                    if (userId == null) userId = claims.getSubject();
+                    
+                    if ("TEAM_MEMBER".equals(role)) {
+                        recent = logRepository.findTop100ByTenantIdAndUserIdOrderByIdDesc(tenantId, userId);
+                    } else {
+                        recent = logRepository.findTop50ByTenantIdOrderByIdDesc(tenantId);
+                    }
+                }
                 if (recent.isEmpty()) return null;
 
                 RequestLog log = recent.get(0);
@@ -229,15 +265,31 @@ public class DashboardController {
      * that represents what the bandit has learned from real interactions.
      */
     @GetMapping("/learning")
-    public Mono<Map<String, Object>> getLearningState() {
+    public Mono<Map<String, Object>> getLearningState(
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
         return Mono.fromCallable(() -> {
+            io.jsonwebtoken.Claims claims = extractClaims(authHeader);
+            String tenantId = claims != null ? claims.get("tenantId", String.class) : null;
+            
+            Set<String> tenantProviderSlugs = (tenantId != null) 
+                ? providerConfigRepository.findByTenantId(tenantId).stream()
+                    .map(com.llm.nexusai_gateway.Provider.ProviderConfig::getSlug).collect(Collectors.toSet())
+                : Collections.emptySet();
+
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("activeStrategy", routingEngineManager.getStrategy().name());
             result.put("activeEngine",   routingEngineManager.getActiveEngineClass());
             result.put("rewardTier",     rewardCalculator.getActiveTier());
 
             Map<String, ProviderReputation> all = reputationService.getAll();
-            List<Map<String, Object>> armStates = all.entrySet().stream().map(e -> {
+            List<Map<String, Object>> armStates = all.entrySet().stream()
+                .filter(e -> {
+                    if (tenantId == null) return true; // global view (fallback)
+                    String armKey = e.getKey();
+                    String providerSlug = armKey.contains(":") ? armKey.split(":")[0] : armKey;
+                    return tenantProviderSlugs.contains(providerSlug);
+                })
+                .map(e -> {
                 ProviderReputation rep = e.getValue();
                 Map<String, Object> arm = new LinkedHashMap<>();
                 arm.put("armKey",        e.getKey());
@@ -246,6 +298,9 @@ public class DashboardController {
                 arm.put("avgLatencyMs",  rep.getAvgLatencyMs());
                 arm.put("availability",  rep.getAvailability());
                 arm.put("failureRate",   rep.getFailureRate());
+                
+                // For tenant-specific view, overwrite the global request count with tenant's specific traffic if possible
+                // (Since Reputation is global EWMA, the scores are global, but we can filter what they see).
                 arm.put("totalRequests", rep.getTotalRequests());
                 arm.put("successCount",  rep.getSuccessCount());
                 arm.put("lastUpdatedMs", rep.getLastUpdatedMs());

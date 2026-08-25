@@ -111,6 +111,7 @@ public class TenantConfig {
     public String getApiKey()                    { return apiKey; }
     public void setApiKey(String apiKey)         { this.apiKey = apiKey; }
     public double getDailyBudgetUsd()            { return dailyBudgetUsd; }
+    public void setDailyBudgetUsd(double dailyBudgetUsd) { this.dailyBudgetUsd = dailyBudgetUsd; }
     public List<String> getAllowedModels()        { return allowedModels; }
     public List<String> getBlockedModels()       { return blockedModels; }
     public List<String> getAllowedPipelines()     { return allowedPipelines; }

@@ -17,7 +17,7 @@ export function getBaseUrl(): string {
   return "http://localhost:8080";
 }
 
-function getJwt(): string | null {
+export function getJwt(): string | null {
   if (typeof window === "undefined") return null;
   return sessionStorage.getItem("nexus_jwt");
 }
@@ -83,6 +83,9 @@ export interface GlobalMetrics {
   activeEngine: string;
   rewardTier: string;
   enabledArmCount: number;
+  activeTeams?: number;
+  teamMembersCount?: number;
+  dailyBudgetUsd?: number;
 }
 
 export interface ModelHealth {
@@ -260,6 +263,7 @@ export interface TeamSummary {
   tenantId: string;
   hasKey: boolean;
   keyActive: boolean;
+  dailyBudgetUsd?: number;
   members?: TeamMember[];
   totalRequests?: number;
   totalCostUsd?: number;
@@ -456,7 +460,7 @@ export const pipelineApi = {
 
 export const adminApi = {
   getTeamLogs: () => request<RequestLog[]>("/api/admin/logs"),
-  getMembers: () => request<Array<{ id: string; email: string; role: string }>>("/api/admin/members"),
+  getMembers: () => request<Array<{ id: string; email: string; role: string; teamId?: string; teamName?: string }>>("/api/admin/members"),
   getMemberLogs: (userId: string) => request<RequestLog[]>(`/api/admin/members/${userId}/logs`),
   getMemberSummary: (userId: string) => request<any>(`/api/admin/members/${userId}/summary`),
   updateMemberRole: (userId: string, role: "TEAM_LEAD" | "TEAM_MEMBER") => 
@@ -465,10 +469,10 @@ export const adminApi = {
       body: JSON.stringify({ role })
     }),
   removeMember: (userId: string) => request<{ message: string }>(`/api/admin/members/${userId}`, { method: "DELETE" }),
-  inviteMember: (email: string, password: string, role: "TEAM_LEAD" | "TEAM_MEMBER") => 
+  inviteMember: (email: string, password?: string, role?: string, teamId?: string) => 
     request<any>("/api/admin/members/invite", {
       method: "POST",
-      body: JSON.stringify({ email, password, role })
+      body: JSON.stringify({ email, password, role, teamId })
     })
 };
 
@@ -482,6 +486,7 @@ export const teamsApi = {
     }),
   listTeams: () => request<TeamSummary[]>("/api/admin/teams"),
   getTeam: (teamId: string) => request<TeamSummary>(`/api/admin/teams/${teamId}`),
+  deleteTeam: (teamId: string) => request<{ message: string }>(`/api/admin/teams/${teamId}`, { method: "DELETE" }),
   assignLead: (teamId: string, email: string) =>
     request<{ message: string; userId: string; isNewUser: boolean }>(
       `/api/admin/teams/${teamId}/lead`,
@@ -521,4 +526,9 @@ export const teamsApi = {
     }),
   getAnalytics: () => request<TeamSummary[]>("/api/admin/teams/analytics"),
   getMyTeam: () => request<TeamSummary>("/api/my-team"),
+  updateTeamBudget: (teamId: string, dailyBudgetUsd: number | null) =>
+    request<TeamSummary>(`/api/admin/teams/${teamId}/budget`, {
+      method: "PATCH",
+      body: JSON.stringify({ dailyBudgetUsd })
+    })
 };

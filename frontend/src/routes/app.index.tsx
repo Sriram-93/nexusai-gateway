@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { dashboardApi, tenantApi, getBaseUrl, type GlobalMetrics, type ActivityLog, type StreamEvent } from "@/lib/api";
+import { dashboardApi, tenantApi, getBaseUrl, getJwt, type GlobalMetrics, type ActivityLog, type StreamEvent } from "@/lib/api";
 import { useUser } from "@/lib/user-context";
 import { useUpgradeRequests } from "@/lib/upgrade-requests";
 import { 
@@ -60,7 +60,9 @@ function DashboardSwitch() {
 
   useEffect(() => {
     if (!live) return;
-    const eventSource = new EventSource(`${getBaseUrl()}/api/dashboard/stream`);
+    const token = getJwt();
+    const url = `${getBaseUrl()}/api/dashboard/stream${token ? `?token=${token}` : ""}`;
+    const eventSource = new EventSource(url);
     eventSource.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);

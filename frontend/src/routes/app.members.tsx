@@ -13,15 +13,17 @@ export const Route = createFileRoute("/app/members")({
 });
 
 function Members() {
-  const [members, setMembers] = useState<Array<{ id: string; email: string; role: string }>>([]);
+  const [members, setMembers] = useState<Array<{ id: string; email: string; role: string; teamId?: string; teamName?: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { session } = useUser();
   const [teamSummary, setTeamSummary] = useState<TeamSummary | null>(null);
+  const [allTeams, setAllTeams] = useState<TeamSummary[]>([]);
 
   const [inviteEmail, setInviteEmail] = useState("");
   const [invitePassword, setInvitePassword] = useState("");
   const [inviteRole, setInviteRole] = useState<"TEAM_MEMBER" | "TEAM_LEAD">("TEAM_MEMBER");
+  const [inviteTeamId, setInviteTeamId] = useState<string>("");
   const [inviting, setInviting] = useState(false);
   const [inviteSuccess, setInviteSuccess] = useState(false);
 
@@ -33,8 +35,12 @@ function Members() {
         setTeamSummary(data);
         setMembers(data.members || []);
       } else {
-        const data = await adminApi.getMembers();
-        setMembers(data);
+        const [memberData, teamsData] = await Promise.all([
+          adminApi.getMembers(),
+          teamsApi.listTeams()
+        ]);
+        setMembers(memberData);
+        setAllTeams(teamsData);
       }
     } catch (err: any) {
       setError(err.message ?? "Failed to load members");
@@ -77,7 +83,7 @@ function Members() {
       if (session.role === "TEAM_LEAD" && teamSummary) {
         await teamsApi.addMember(teamSummary.id, inviteEmail, inviteRole);
       } else {
-        await adminApi.inviteMember(inviteEmail, invitePassword, inviteRole);
+        await adminApi.inviteMember(inviteEmail, invitePassword, inviteRole, inviteTeamId === "" ? undefined : inviteTeamId);
       }
       setInviteSuccess(true);
       setInviteEmail("");
@@ -108,6 +114,7 @@ function Members() {
                 <tr className="text-left text-[0.7rem] uppercase tracking-[0.14em] text-muted-foreground">
                   <th className="px-5 py-3 font-medium">Email</th>
                   <th className="px-5 py-3 font-medium">Role</th>
+                  <th className="px-5 py-3 font-medium">Team</th>
                   <th className="px-5 py-3 font-medium text-right">Actions</th>
                 </tr>
               </thead>
@@ -135,6 +142,9 @@ function Members() {
                       }`}>
                         {m.role.replace('_', ' ')}
                       </span>
+                    </td>
+                    <td className="px-5 py-3 font-mono text-xs text-muted-foreground">
+                      {m.teamName || <span className="opacity-50">Unassigned</span>}
                     </td>
                     <td className="px-5 py-3 text-right">
                       <div className="flex justify-end gap-2">
@@ -218,6 +228,22 @@ function Members() {
                   <option value="TEAM_LEAD">Team Lead</option>
                 </select>
               </div>
+
+              {session.role !== "TEAM_LEAD" && (
+                <div>
+                  <label className="text-[0.7rem] uppercase tracking-wider text-muted-foreground mb-1 block">Assign to Team (Optional)</label>
+                  <select
+                    value={inviteTeamId}
+                    onChange={e => setInviteTeamId(e.target.value)}
+                    className="w-full h-9 rounded-lg border-[var(--glass-border)] bg-[var(--glass-bg)] px-3 text-xs focus:outline-none focus:border-cyan"
+                  >
+                    <option value="">-- No Team (Unassigned) --</option>
+                    {allTeams.map(t => (
+                      <option key={t.id} value={t.id}>{t.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               {error && (
                 <div className="text-xs text-destructive bg-destructive/10 p-2 rounded">

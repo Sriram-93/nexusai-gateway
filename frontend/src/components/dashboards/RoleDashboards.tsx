@@ -207,10 +207,10 @@ export function OrgDashboard({ metrics, logs, live, setLive, tenant }: Dashboard
   return (
     <AppShell title="Organization Dashboard" subtitle="Enterprise Overview">
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="Active Teams" value="8" delta={0} icon={Network} tone="indigo" spark={[8, 8, 8, 8, 8, 8, 8]} />
+        <MetricCard label="Active Teams" value={metrics?.activeTeams ?? 0} delta={0} icon={Network} tone="indigo" spark={[8, 8, 8, 8, 8, 8, 8]} />
         <MetricCard label="Org Requests" value={metrics ? fmtRequests(metrics.totalRequests) : "—"} delta={0} icon={Radio} tone="cyan" spark={[0, 0, 0, 0, 0, 0, 0, metrics?.totalRequests ?? 0]} />
         <MetricCard label="Avg Latency" value={metrics ? `${Math.round(metrics.avgLatencyMs)}ms` : "—"} delta={0} icon={Gauge} tone="emerald" spark={[0, 0, 0, 0, 0, 0, 0, metrics?.avgLatencyMs ?? 0]} />
-        <MetricCard label="Budget Spent" value={metrics ? `$${(metrics.totalCostUsd).toFixed(2)} / $5,000` : "—"} delta={0} icon={CircleDollarSign} tone="amber" spark={[0, 0, 0, 0, 0, 0, 0, metrics?.totalCostUsd ?? 0]} />
+        <MetricCard label="Budget Spent" value={metrics ? `$${(metrics.totalCostUsd).toFixed(2)}` : "—"} delta={0} icon={CircleDollarSign} tone="amber" spark={[0, 0, 0, 0, 0, 0, 0, metrics?.totalCostUsd ?? 0]} />
       </div>
 
       <ActivityStream logs={logs} live={live} setLive={setLive} />
@@ -220,7 +220,9 @@ export function OrgDashboard({ metrics, logs, live, setLive, tenant }: Dashboard
 
 export function TeamDashboard({ metrics, logs, live, setLive, tenant, openModal }: DashboardProps) {
 
-  const budgetUsed = 82; 
+  const budget = metrics?.dailyBudgetUsd || 500;
+  const cost = metrics?.totalCostUsd || 0;
+  const budgetUsed = Math.round((cost / budget) * 100);
   const isNearLimit = budgetUsed >= 80;
 
   return (
@@ -243,10 +245,9 @@ export function TeamDashboard({ metrics, logs, live, setLive, tenant, openModal 
       )}
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="Team Members" value="12" delta={0} icon={Users} tone="indigo" spark={[10, 10, 11, 12, 12, 12, 12]} />
+        <MetricCard label="Team Members" value={metrics?.teamMembersCount ?? 0} delta={0} icon={Users} tone="indigo" spark={[10, 10, 11, 12, 12, 12, 12]} />
         <MetricCard label="Team Requests" value={metrics ? fmtRequests(metrics.totalRequests) : "—"} delta={0} icon={Radio} tone="cyan" spark={[0, 0, 0, 0, 0, 0, 0, metrics?.totalRequests ?? 0]} />
-        <MetricCard label="Team Tokens" value={metrics ? fmtRequests((metrics.totalRequests * 142)) : "—"} delta={0} icon={Gauge} tone="emerald" spark={[0, 0, 0, 0, 0, 0, 0, metrics?.totalRequests ?? 0]} />
-        <MetricCard label="Team Cost" value={metrics ? `$${(metrics.totalCostUsd).toFixed(2)} / $500` : "—"} delta={0} icon={CircleDollarSign} tone="amber" spark={[0, 0, 0, 0, 0, 0, 0, metrics?.totalCostUsd ?? 0]} />
+        <MetricCard label="Team Cost" value={metrics ? `$${(metrics.totalCostUsd).toFixed(2)} / $${budget}` : "—"} delta={0} icon={CircleDollarSign} tone="amber" spark={[0, 0, 0, 0, 0, 0, 0, metrics?.totalCostUsd ?? 0]} />
       </div>
 
       <ActivityStream logs={logs} live={live} setLive={setLive} />

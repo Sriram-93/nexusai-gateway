@@ -89,13 +89,35 @@ public class TeamController {
 
     private String extractOrgId(String auth) {
         if (auth == null || !auth.startsWith("Bearer ")) return null;
-        try { return jwtUtil.extractClaim(auth.substring(7), c -> c.get("orgId", String.class)); }
+        try { 
+            String orgId = jwtUtil.extractClaim(auth.substring(7), c -> c.get("orgId", String.class));
+            if (orgId != null) return orgId;
+            
+            // Fallback: get orgId from tenant config using the tenantId claim
+            String tenantId = jwtUtil.extractClaim(auth.substring(7), c -> c.get("tenantId", String.class));
+            if (tenantId != null) {
+                return tenantRegistry.get(tenantId)
+                        .map(com.llm.nexusai_gateway.Tenant.TenantConfig::getOrganizationId)
+                        .orElse(null);
+            }
+            return null;
+        }
         catch (Exception e) { return null; }
     }
 
     private String extractUserId(String auth) {
         if (auth == null || !auth.startsWith("Bearer ")) return null;
-        try { return jwtUtil.extractClaim(auth.substring(7), c -> c.get("userId", String.class)); }
+        try { 
+            String token = auth.substring(7);
+            String userId = jwtUtil.extractClaim(token, c -> c.get("userId", String.class));
+            if (userId != null) return userId;
+            
+            String email = jwtUtil.extractClaim(token, c -> c.getSubject());
+            if (email != null) {
+                return userRepository.findByEmail(email).map(com.llm.nexusai_gateway.Security.User::getId).orElse(null);
+            }
+            return null;
+        }
         catch (Exception e) { return null; }
     }
 
@@ -123,6 +145,7 @@ public class TeamController {
         map.put("tenantId", t.getTenantId() != null ? t.getTenantId() : "");
         map.put("hasKey", hasKey);
         map.put("keyActive", keyActive);
+        map.put("dailyBudgetUsd", t.getDailyBudgetUsd() != null ? t.getDailyBudgetUsd() : 0.0);
         return map;
     }
 
@@ -147,6 +170,40 @@ public class TeamController {
         return ResponseEntity.ok(teamToMap(team));
     }
 
+    // ─── Update Team Budget ───────────────────────────────────────────────────
+
+    @PatchMapping("/api/admin/teams/{teamId}/budget")
+    public ResponseEntity<?> updateTeamBudget(
+            @PathVariable String teamId,
+            @RequestBody Map<String, Object> body,
+            @RequestHeader(value = "Authorization", required = false) String auth) {
+        if (!isOrgAdmin(auth)) return ResponseEntity.status(403).body(Map.of("error", "ORG_ADMIN role required"));
+        String orgId = extractOrgId(auth);
+        
+        return teamRepository.findByIdAndOrganizationId(teamId, orgId)
+            .map(team -> {
+                Number newBudget = (Number) body.get("dailyBudgetUsd");
+                if (newBudget != null) {
+                    team.setDailyBudgetUsd(newBudget.doubleValue());
+                } else {
+                    team.setDailyBudgetUsd(null); // Remove limit
+                }
+                
+                // If they have a TenantConfig, we should update that too for fallback consistency
+                if (team.getTenantId() != null) {
+                    tenantConfigRepository.findById(team.getTenantId()).ifPresent(tc -> {
+                        tc.setDailyBudgetUsd(team.getDailyBudgetUsd() != null ? team.getDailyBudgetUsd() : 999999.0);
+                        tenantConfigRepository.save(tc);
+                        tenantRegistry.register(tc);
+                    });
+                }
+                
+                teamRepository.save(team);
+                return ResponseEntity.ok(teamToMap(team));
+            })
+            .orElse(ResponseEntity.notFound().build());
+    }
+
     // ─── List Teams ──────────────────────────────────────────────────────────
 
     @GetMapping("/api/admin/teams")
@@ -167,6 +224,7 @@ public class TeamController {
             @RequestHeader(value = "Authorization", required = false) String auth) {
         if (!isOrgAdmin(auth)) return ResponseEntity.status(403).body(Map.of("error", "ORG_ADMIN role required"));
         String orgId = extractOrgId(auth);
+        log.info("getTeam called for teamId: {}, orgId: {}", teamId, orgId);
         return teamRepository.findByIdAndOrganizationId(teamId, orgId)
             .map(team -> {
                 List<TeamMembership> memberships = membershipRepository.findAllByTeamId(teamId);
@@ -180,7 +238,40 @@ public class TeamController {
                 detail.put("members", members);
                 return ResponseEntity.ok(detail);
             })
-            .orElse(ResponseEntity.notFound().build());
+            .orElseGet(() -> {
+                log.warn("Team not found for teamId: {} and orgId: {}", teamId, orgId);
+                return ResponseEntity.notFound().build();
+            });
+    }
+
+    // ─── Delete Team ──────────────────────────────────────────────────────────
+
+    @DeleteMapping("/api/admin/teams/{teamId}")
+    public ResponseEntity<?> deleteTeam(
+            @PathVariable String teamId,
+            @RequestHeader(value = "Authorization", required = false) String auth) {
+        if (!isOrgAdmin(auth)) return ResponseEntity.status(403).body(Map.of("error", "ORG_ADMIN role required"));
+        String orgId = extractOrgId(auth);
+        
+        Optional<Team> teamOpt = teamRepository.findByIdAndOrganizationId(teamId, orgId);
+        if (teamOpt.isEmpty()) return ResponseEntity.notFound().build();
+        
+        Team team = teamOpt.get();
+        
+        // 1. Delete all memberships for this team
+        List<TeamMembership> memberships = membershipRepository.findAllByTeamId(teamId);
+        membershipRepository.deleteAll(memberships);
+        
+        // 2. Delete TenantConfig if exists
+        if (team.getTenantId() != null) {
+            tenantRegistry.remove(team.getTenantId());
+        }
+        
+        // 3. Delete the team itself
+        teamRepository.delete(team);
+        
+        log.info("Team deleted: {} (id={}, org={})", team.getName(), teamId, orgId);
+        return ResponseEntity.ok(Map.of("message", "Team deleted successfully"));
     }
 
     // ─── Assign / Create Team Lead ────────────────────────────────────────────
@@ -206,18 +297,24 @@ public class TeamController {
 
         // Check if user already exists
         Optional<User> existingUser = userRepository.findByEmail(email);
-        User lead;
-        String tempPassword = null;
+        if (existingUser.isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "User not found in organization. Please invite them first from the Members page."));
+        }
+        
+        User lead = existingUser.get();
+        if (lead.getOrganization() == null || !lead.getOrganization().getId().equals(orgId)) {
+            return ResponseEntity.status(403).body(Map.of("error", "User belongs to another organization"));
+        }
+        
+        lead.setRole("TEAM_LEAD");
+        userRepository.save(lead);
 
-        if (existingUser.isPresent()) {
-            lead = existingUser.get();
-            lead.setRole("TEAM_LEAD");
-            userRepository.save(lead);
-        } else {
-            // Create new user with temp password
-            tempPassword = "Temp@" + UUID.randomUUID().toString().substring(0, 8);
-            lead = new User(email, passwordEncoder.encode(tempPassword), "TEAM_LEAD", org);
-            userRepository.save(lead);
+        // Demote old lead if it exists and is different from the new lead
+        if (team.getLeadUserId() != null && !team.getLeadUserId().equals(lead.getId())) {
+            userRepository.findById(team.getLeadUserId()).ifPresent(oldLead -> {
+                oldLead.setRole("TEAM_MEMBER");
+                userRepository.save(oldLead);
+            });
         }
 
         // Assign lead to team
@@ -231,16 +328,12 @@ public class TeamController {
         }
 
         // Send welcome email (async, log-only if no SMTP)
-        if (tempPassword != null) {
-            notificationService.sendTeamLeadWelcome(email, team.getName(), orgName, tempPassword, teamId);
-        }
-
-        log.info("Team Lead assigned: {} → team {} (newUser={})", email, team.getName(), tempPassword != null);
+        log.info("Team Lead assigned: {} → team {}", email, team.getName());
         return ResponseEntity.ok(Map.of(
-            "message", "Team Lead assigned" + (tempPassword != null ? ". Welcome email sent." : "."),
+            "message", "Team Lead assigned.",
             "userId", lead.getId(),
             "email", email,
-            "isNewUser", tempPassword != null
+            "isNewUser", false
         ));
     }
 
@@ -264,15 +357,13 @@ public class TeamController {
 
         Organization org = organizationRepository.findById(orgId).orElse(null);
         Optional<User> existingUser = userRepository.findByEmail(email);
-        User member;
-        String tempPassword = null;
-
-        if (existingUser.isPresent()) {
-            member = existingUser.get();
-        } else {
-            tempPassword = "Temp@" + UUID.randomUUID().toString().substring(0, 8);
-            member = new User(email, passwordEncoder.encode(tempPassword), role, org);
-            userRepository.save(member);
+        if (existingUser.isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "User not found in organization. Please invite them first from the Members page."));
+        }
+        
+        User member = existingUser.get();
+        if (member.getOrganization() == null || !member.getOrganization().getId().equals(orgId)) {
+            return ResponseEntity.status(403).body(Map.of("error", "User belongs to another organization"));
         }
 
         if (membershipRepository.existsByTeamIdAndUserId(teamId, member.getId())) {
@@ -291,7 +382,7 @@ public class TeamController {
             "userId", member.getId(),
             "email", email,
             "role", role,
-            "isNewUser", tempPassword != null
+            "isNewUser", false
         ));
     }
 
@@ -449,12 +540,8 @@ public class TeamController {
 
         List<Team> teams = teamRepository.findAllByOrganizationId(orgId);
         List<Map<String, Object>> analytics = teams.stream().map(team -> {
+            Map<String, Object> stat = new LinkedHashMap<>(teamToMap(team));
             String tid = team.getTenantId();
-            Map<String, Object> stat = new LinkedHashMap<>();
-            stat.put("teamId", team.getId());
-            stat.put("teamName", team.getName());
-            stat.put("leadEmail", team.getLeadEmail() != null ? team.getLeadEmail() : "");
-            stat.put("active", team.isActive());
             if (tid != null) {
                 long totalRequests = requestLogRepository.countByTenantId(tid);
                 Double totalCost = requestLogRepository.sumCostUsdByTenant(tid);
@@ -491,12 +578,11 @@ public class TeamController {
         List<TeamMembership> memberships = membershipRepository.findAllByTeamId(team.getId());
 
         List<Map<String, Object>> members = memberships.stream()
-            .filter(m -> !m.getUserId().equals(userId)) // exclude self
             .map(m -> {
                 long reqCount = m.getUserId() != null ?
                     requestLogRepository.countByUserId(m.getUserId()) : 0;
                 return Map.<String, Object>of(
-                    "userId", m.getUserId(),
+                    "id", m.getUserId(),
                     "email", m.getUserEmail(),
                     "role", m.getRole(),
                     "joinedAt", m.getJoinedAt().toString(),

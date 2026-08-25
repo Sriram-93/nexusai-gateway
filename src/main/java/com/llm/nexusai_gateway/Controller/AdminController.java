@@ -43,19 +43,25 @@ public class AdminController {
     private final TenantRegistry tenantRegistry;
     private final JwtUtil jwtUtil;
     private final PasswordEncoder passwordEncoder;
+    private final com.llm.nexusai_gateway.Team.TeamMembershipRepository membershipRepository;
+    private final com.llm.nexusai_gateway.Team.TeamRepository teamRepository;
 
     public AdminController(UserRepository userRepository,
                            RequestLogRepository logRepository,
                            OrganizationRepository organizationRepository,
                            TenantRegistry tenantRegistry,
                            JwtUtil jwtUtil,
-                           PasswordEncoder passwordEncoder) {
+                           PasswordEncoder passwordEncoder,
+                           com.llm.nexusai_gateway.Team.TeamMembershipRepository membershipRepository,
+                           com.llm.nexusai_gateway.Team.TeamRepository teamRepository) {
         this.userRepository = userRepository;
         this.logRepository = logRepository;
         this.organizationRepository = organizationRepository;
         this.tenantRegistry = tenantRegistry;
         this.jwtUtil = jwtUtil;
         this.passwordEncoder = passwordEncoder;
+        this.membershipRepository = membershipRepository;
+        this.teamRepository = teamRepository;
     }
 
     // ─── Team Logs ─────────────────────────────────────────────────────────────
@@ -103,7 +109,21 @@ public class AdminController {
 
                 List<MemberSummary> members = userRepository.findAllByOrganizationId(org.getId())
                     .stream()
-                    .map(u -> new MemberSummary(u.getId(), u.getEmail(), u.getRole()))
+                    .map(u -> {
+                        // Find their team membership
+                        var memberships = membershipRepository.findAllByUserId(u.getId());
+                        String teamId = null;
+                        String teamName = null;
+                        if (!memberships.isEmpty()) {
+                            var mem = memberships.get(0);
+                            teamId = mem.getTeamId();
+                            var teamOpt = teamRepository.findById(teamId);
+                            if (teamOpt.isPresent()) {
+                                teamName = teamOpt.get().getName();
+                            }
+                        }
+                        return new MemberSummary(u.getId(), u.getEmail(), u.getRole(), teamId, teamName);
+                    })
                     .collect(Collectors.toList());
                 return ResponseEntity.ok(members);
             })
@@ -275,6 +295,7 @@ public class AdminController {
         String email = body.get("email");
         String password = body.get("password");
         String role = body.getOrDefault("role", "TEAM_MEMBER");
+        String teamId = body.get("teamId");
 
         if (email == null || password == null) {
             return ResponseEntity.badRequest().body(Map.of("error", "email and password are required"));
@@ -296,6 +317,26 @@ public class AdminController {
                 userRepository.save(newMember);
                 log.info("Admin {} added member {} ({}) to org {}", callerEmail, email, role, org.getName());
 
+                if (teamId != null && !teamId.isBlank()) {
+                    teamRepository.findByIdAndOrganizationId(teamId, org.getId()).ifPresent(team -> {
+                        membershipRepository.save(new com.llm.nexusai_gateway.Team.TeamMembership(teamId, newMember.getId(), email, role));
+                        
+                        // If they are invited as TEAM_LEAD, auto-assign them as the team lead
+                        if ("TEAM_LEAD".equals(role)) {
+                            // Demote old lead if exists
+                            if (team.getLeadUserId() != null && !team.getLeadUserId().equals(newMember.getId())) {
+                                userRepository.findById(team.getLeadUserId()).ifPresent(oldLead -> {
+                                    oldLead.setRole("TEAM_MEMBER");
+                                    userRepository.save(oldLead);
+                                });
+                            }
+                            team.setLeadUserId(newMember.getId());
+                            team.setLeadEmail(email);
+                            teamRepository.save(team);
+                        }
+                    });
+                }
+
                 return ResponseEntity.ok(Map.<String, Object>of(
                     "message", "Member added successfully",
                     "userId", newMember.getId(),
@@ -304,6 +345,71 @@ public class AdminController {
                 ));
             })
             .orElse(ResponseEntity.status(404).<Object>body(Map.of("error", "Caller not found")));
+    }
+
+    /**
+     * POST /api/admin/members/bulk-invite
+     * Add multiple new members to the organization via JSON list (representing parsed CSV).
+     * Body: [{ "email": "...", "role": "TEAM_MEMBER", "teamId": "..." }, ...]
+     */
+    @PostMapping("/members/bulk-invite")
+    public ResponseEntity<?> bulkInviteMembers(
+            @RequestBody List<Map<String, String>> bulkMembers,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        Claims claims = extractClaims(authHeader);
+        if (claims == null) return unauthorized();
+
+        String callerRole = claims.get("role", String.class);
+        if (!"ORG_ADMIN".equals(callerRole)) return forbidden();
+
+        String callerEmail = claims.getSubject();
+        Optional<User> callerOpt = userRepository.findByEmail(callerEmail);
+        if (callerOpt.isEmpty()) return ResponseEntity.status(404).<Object>body(Map.of("error", "Caller not found"));
+        
+        Organization org = callerOpt.get().getOrganization();
+        if (org == null) return ResponseEntity.status(500).<Object>body(Map.of("error", "Organization not found"));
+
+        int addedCount = 0;
+        int skippedCount = 0;
+
+        for (Map<String, String> row : bulkMembers) {
+            String email = row.get("email");
+            if (email == null || email.isBlank()) { skippedCount++; continue; }
+            
+            String role = row.getOrDefault("role", "TEAM_MEMBER");
+            String teamId = row.get("teamId");
+
+            if (userRepository.findByEmail(email).isPresent()) { skippedCount++; continue; }
+
+            String tempPassword = "Temp@" + UUID.randomUUID().toString().substring(0, 8);
+            User newMember = new User(email, passwordEncoder.encode(tempPassword), role, org);
+            userRepository.save(newMember);
+            addedCount++;
+
+            if (teamId != null && !teamId.isBlank()) {
+                teamRepository.findByIdAndOrganizationId(teamId, org.getId()).ifPresent(team -> {
+                    membershipRepository.save(new com.llm.nexusai_gateway.Team.TeamMembership(teamId, newMember.getId(), email, role));
+                    
+                    if ("TEAM_LEAD".equals(role)) {
+                        if (team.getLeadUserId() != null && !team.getLeadUserId().equals(newMember.getId())) {
+                            userRepository.findById(team.getLeadUserId()).ifPresent(oldLead -> {
+                                oldLead.setRole("TEAM_MEMBER");
+                                userRepository.save(oldLead);
+                            });
+                        }
+                        team.setLeadUserId(newMember.getId());
+                        team.setLeadEmail(email);
+                        teamRepository.save(team);
+                    }
+                });
+            }
+        }
+
+        return ResponseEntity.ok(Map.of(
+            "message", "Bulk import completed",
+            "added", addedCount,
+            "skipped", skippedCount
+        ));
     }
 
     // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -337,5 +443,5 @@ public class AdminController {
 
     // ─── DTOs ────────────────────────────────────────────────────────────────────
 
-    public record MemberSummary(String id, String email, String role) {}
+    public record MemberSummary(String id, String email, String role, String teamId, String teamName) {}
 }

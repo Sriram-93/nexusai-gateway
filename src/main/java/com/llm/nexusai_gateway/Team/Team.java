@@ -2,6 +2,7 @@ package com.llm.nexusai_gateway.Team;
 
 import jakarta.persistence.*;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.UUID;
 
 /**
@@ -45,6 +46,12 @@ public class Team {
     @Column(nullable = false, name = "created_at")
     private Instant createdAt;
 
+    @Column(name = "daily_budget_usd")
+    private Double dailyBudgetUsd;
+
+    @Column(name = "budget_alert_sent_date")
+    private LocalDate budgetAlertSentDate;
+
     public Team() {}
 
     public Team(String name, String description, String organizationId) {
@@ -84,4 +91,10 @@ public class Team {
 
     public Instant getCreatedAt()                { return createdAt; }
     public void setCreatedAt(Instant t)          { this.createdAt = t; }
+
+    public Double getDailyBudgetUsd()            { return dailyBudgetUsd; }
+    public void setDailyBudgetUsd(Double b)      { this.dailyBudgetUsd = b; }
+
+    public LocalDate getBudgetAlertSentDate()    { return budgetAlertSentDate; }
+    public void setBudgetAlertSentDate(LocalDate d) { this.budgetAlertSentDate = d; }
 }

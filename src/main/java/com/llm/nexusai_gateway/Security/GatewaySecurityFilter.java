@@ -29,11 +29,13 @@ public class GatewaySecurityFilter implements WebFilter {
     private final TenantRegistry tenantRegistry;
     private final RedisRateLimiter rateLimiter;
     private final JwtUtil jwtUtil;
+    private final org.springframework.data.redis.core.StringRedisTemplate redisTemplate;
 
-    public GatewaySecurityFilter(TenantRegistry tenantRegistry, RedisRateLimiter rateLimiter, JwtUtil jwtUtil) {
+    public GatewaySecurityFilter(TenantRegistry tenantRegistry, RedisRateLimiter rateLimiter, JwtUtil jwtUtil, org.springframework.data.redis.core.StringRedisTemplate redisTemplate) {
         this.tenantRegistry = tenantRegistry;
         this.rateLimiter = rateLimiter;
         this.jwtUtil = jwtUtil;
+        this.redisTemplate = redisTemplate;
     }
 
     @Override
@@ -56,7 +58,10 @@ public class GatewaySecurityFilter implements WebFilter {
                     // It's a JWT from the frontend
                     try {
                         String tenantId = jwtUtil.extractClaim(token, claims -> claims.get("tenantId", String.class));
-                        String extractedUserId = jwtUtil.extractClaim(token, claims -> claims.getSubject());
+                        String extractedUserId = jwtUtil.extractClaim(token, claims -> claims.get("userId", String.class));
+                        if (extractedUserId == null) {
+                            extractedUserId = jwtUtil.extractClaim(token, claims -> claims.getSubject());
+                        }
                         if (tenantId != null) {
                             optTenant = tenantRegistry.get(tenantId);
                         }
@@ -108,11 +113,23 @@ public class GatewaySecurityFilter implements WebFilter {
             }
         }
 
-        // 1. Check Pre-paid Budget
-        if (tenant.getRemainingBudget() <= 0) {
-            log.warn("Tenant {} has exhausted their daily budget.", tenant.getTenantId());
-            exchange.getResponse().setStatusCode(HttpStatus.PAYMENT_REQUIRED);
-            return exchange.getResponse().setComplete();
+        // 1. Check Pre-paid Budget via Redis
+        if (tenant.getDailyBudgetUsd() > 0) {
+            String dateStr = java.time.LocalDate.now().toString();
+            String redisKey = "nexus:budget:team:" + tenant.getTenantId() + ":" + dateStr;
+            String currentStr = redisTemplate.opsForValue().get(redisKey);
+            if (currentStr != null) {
+                try {
+                    double currentSpend = Double.parseDouble(currentStr);
+                    if (currentSpend >= tenant.getDailyBudgetUsd()) {
+                        log.warn("Tenant {} has exhausted their daily budget in Redis.", tenant.getTenantId());
+                        exchange.getResponse().setStatusCode(HttpStatus.TOO_MANY_REQUESTS); // Quota exceeded
+                        return exchange.getResponse().setComplete();
+                    }
+                } catch (Exception e) {
+                    // Ignore parse error
+                }
+            }
         }
 
         // 2. Check Redis Rate Limiter
