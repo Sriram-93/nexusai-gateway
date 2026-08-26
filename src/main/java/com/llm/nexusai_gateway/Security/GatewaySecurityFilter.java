@@ -42,11 +42,18 @@ public class GatewaySecurityFilter implements WebFilter {
     public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
         String path = exchange.getRequest().getURI().getPath();
         
-        // Protect the native /api/chat endpoint, /api/agent/chat, and the OpenAI proxy endpoint
-        if (!path.startsWith("/api/chat") && !path.startsWith("/api/agent/chat") && !path.startsWith("/v1/chat")) {
+        // 1. Allow public endpoints to pass through without authentication
+        if (path.startsWith("/api/auth/") || path.startsWith("/api/tenant/signup") || 
+            path.startsWith("/api/health") || path.startsWith("/actuator")) {
             return chain.filter(exchange);
         }
 
+        // 2. Ignore non-API static resource requests (e.g., frontend assets)
+        if (!path.startsWith("/api/") && !path.startsWith("/v1/chat")) {
+            return chain.filter(exchange);
+        }
+
+        // 3. Extract Authentication Credentials (JWT or API Key)
         String apiKey = exchange.getRequest().getHeaders().getFirst("X-API-Key");
         Optional<TenantConfig> optTenant = Optional.empty();
 
@@ -77,6 +84,7 @@ public class GatewaySecurityFilter implements WebFilter {
             }
         }
 
+        // 4. Validate Authentication
         if (optTenant.isEmpty()) {
             if (apiKey == null || apiKey.isBlank()) {
                 log.warn("Missing authentication for request to {}", path);
@@ -94,14 +102,29 @@ public class GatewaySecurityFilter implements WebFilter {
 
         TenantConfig tenant = optTenant.get();
 
-        // 0.1 Check Active Status
+        // 5. Determine if this is a high-cost routing request vs a dashboard data request
+        boolean isRoutingEndpoint = path.startsWith("/api/chat") || 
+                                    path.startsWith("/api/agent/chat") || 
+                                    path.startsWith("/v1/chat");
+
+        if (!isRoutingEndpoint) {
+            // Dashboard request: authenticated and allowed immediately
+            log.debug("Authorized dashboard API request for tenant: {}", tenant.getTenantId());
+            exchange.getAttributes().put(TENANT_CONTEXT_KEY, tenant);
+            return chain.filter(exchange)
+                .contextWrite(ctx -> ctx.put(TENANT_CONTEXT_KEY, tenant));
+        }
+
+        // 6. Routing Endpoint Validations (Active Status, IP Whitelist, Budget, Rate Limits)
+        
+        // 6.1 Check Active Status
         if (!tenant.isActive()) {
             log.warn("Tenant {} is deactivated.", tenant.getTenantId());
             exchange.getResponse().setStatusCode(HttpStatus.FORBIDDEN);
             return exchange.getResponse().setComplete();
         }
 
-        // 0.2 Check IP Whitelist
+        // 6.2 Check IP Whitelist
         if (tenant.getAllowedIps() != null && !tenant.getAllowedIps().isEmpty()) {
             String clientIp = exchange.getRequest().getRemoteAddress() != null 
                               ? exchange.getRequest().getRemoteAddress().getAddress().getHostAddress() 
@@ -113,7 +136,7 @@ public class GatewaySecurityFilter implements WebFilter {
             }
         }
 
-        // 1. Check Pre-paid Budget via Redis
+        // 6.3 Check Pre-paid Budget via Redis
         if (tenant.getDailyBudgetUsd() > 0) {
             String dateStr = java.time.LocalDate.now().toString();
             String redisKey = "nexus:budget:team:" + tenant.getTenantId() + ":" + dateStr;
@@ -132,7 +155,7 @@ public class GatewaySecurityFilter implements WebFilter {
             }
         }
 
-        // 2. Check Redis Rate Limiter
+        // 6.4 Check Redis Rate Limiter
         return rateLimiter.isAllowed(tenant.getTenantId(), tenant.getMaxRequestsPerMinute())
             .flatMap(allowed -> {
                 if (!allowed) {
@@ -142,8 +165,8 @@ public class GatewaySecurityFilter implements WebFilter {
                     return exchange.getResponse().setComplete();
                 }
 
-                // 3. Authenticated and Allowed -> Inject Tenant into context and proceed
-                log.debug("Authorized request for tenant: {}", tenant.getTenantId());
+                // 7. Fully Authorized and Allowed -> Inject Tenant into context and proceed
+                log.debug("Authorized routing request for tenant: {}", tenant.getTenantId());
                 exchange.getAttributes().put(TENANT_CONTEXT_KEY, tenant);
                 return chain.filter(exchange)
                     .contextWrite(ctx -> ctx.put(TENANT_CONTEXT_KEY, tenant));

@@ -64,6 +64,15 @@ async function request<T>(
     }
     if (res.status === 429) throw new ApiError(429, "Rate limit exceeded. Please wait before retrying.");
     if (res.status === 402) throw new ApiError(402, "Budget exhausted. Upgrade your plan or top-up.");
+    if (res.status === 401 && !path.startsWith("/api/auth/login")) {
+      if (typeof window !== "undefined") {
+        sessionStorage.removeItem("nexus_jwt");
+        sessionStorage.removeItem("nexus_api_key");
+        sessionStorage.removeItem("nexus_tenant_id");
+        window.location.href = "/";
+      }
+      throw new ApiError(401, "Session expired. Please log in again.");
+    }
     throw new ApiError(res.status, message);
   }
 

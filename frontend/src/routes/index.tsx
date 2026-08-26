@@ -84,12 +84,8 @@ function AuthPage() {
         });
 
         success("Workspace provisioned!", `Welcome to NexusAI — ${tier === "SOLO" ? "Solo workspace" : orgName} is live.`);
-        // ORG_ADMINs go directly to dashboard — no provider setup required
-        if (tier === "ADMINISTRATION") {
-          navigate({ to: "/app" });
-        } else {
-          navigate({ to: "/onboarding" });
-        }
+        
+        navigate({ to: "/onboarding" });
       } catch (err: any) {
         const msg = err instanceof ApiError ? err.message : (err.message ?? "Signup failed. Please try again.");
         setSignInError(msg);
@@ -115,11 +111,20 @@ function AuthPage() {
         
         // Custom routing based on role
         if (res.role === "ORG_ADMIN") {
-          navigate({ to: "/app" });          // Dashboard first — provider setup is optional
+          navigate({ to: "/app/members" });
         } else if (res.role === "TEAM_LEAD" || res.role === "TEAM_MEMBER") {
           navigate({ to: "/app" });
         } else if (res.role === "SOLO") {
-          navigate({ to: "/app" }); // SOLO lands on dashboard, setup is optional
+          try {
+            const status = await providersApi.getStatus();
+            if (!status.hasProviders) {
+              navigate({ to: "/app/providers" });
+            } else {
+              navigate({ to: "/app" });
+            }
+          } catch (e) {
+            navigate({ to: "/app/providers" });
+          }
         } else {
           navigate({ to: "/app" });
         }

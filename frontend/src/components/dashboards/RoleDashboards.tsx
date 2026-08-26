@@ -105,7 +105,7 @@ function ActivityStream({ logs, live, setLive }: { logs: any[]; live: boolean; s
                   className="border-t transition-colors hover:bg-[var(--glass-hover)]"
                 >
                   <td className="px-5 py-3 font-mono text-xs text-muted-foreground">
-                    {row.timestamp ? new Date(row.timestamp).toLocaleTimeString() : "—"}
+                    {row.timestamp ? new Date(row.timestamp.endsWith('Z') ? row.timestamp : row.timestamp + 'Z').toLocaleTimeString() : "—"}
                   </td>
                   <td className="px-5 py-3">{row.provider || "—"}</td>
                   <td className="px-5 py-3 font-mono text-xs text-cyan">{row.model || "—"}</td>

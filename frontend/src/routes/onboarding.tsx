@@ -1,4 +1,4 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate, redirect } from "@tanstack/react-router";
 import { motion, AnimatePresence } from "motion/react";
 import { useMemo, useState } from "react";
 import {
@@ -16,6 +16,14 @@ import { useToast } from "@/lib/toast";
 import { providersApi, tenantApi } from "@/lib/api";
 
 export const Route = createFileRoute("/onboarding")({
+  beforeLoad: () => {
+    if (typeof window !== "undefined") {
+      const jwt = sessionStorage.getItem("nexus_jwt");
+      if (!jwt) {
+        throw redirect({ to: "/" });
+      }
+    }
+  },
   head: () => ({
     meta: [
       { title: "Provision Your Workspace — NexusAI" },
@@ -134,7 +142,7 @@ function Onboarding() {
       if (session.role === "ORG_ADMIN") {
         navigate({ to: "/app/members" });
       } else if (session.role === "SOLO") {
-        navigate({ to: "/app/providers" });
+        navigate({ to: "/app" });
       } else {
         navigate({ to: "/app" });
       }
@@ -261,7 +269,7 @@ function Onboarding() {
                   </Button>
                 </motion.div>
                 <Link
-                  to="/app"
+                  to={isOrg ? "/app/members" : "/app"}
                   className="glass flex h-11 items-center gap-1.5 rounded-xl px-4 text-sm transition-colors hover:bg-[var(--glass-hover)] text-muted-foreground"
                 >
                   Skip to console <ChevronRight className="h-4 w-4" />
@@ -415,7 +423,11 @@ function Onboarding() {
                 </motion.div>
                 {!connected && (
                   <button
-                    onClick={() => navigate({ to: "/app" })}
+                    onClick={() => {
+                      if (session.role === "ORG_ADMIN") navigate({ to: "/app/members" });
+                      else if (session.role === "SOLO") navigate({ to: "/app/providers" });
+                      else navigate({ to: "/app" });
+                    }}
                     className="text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground transition-colors"
                   >
                     Set up later in Provider Hub

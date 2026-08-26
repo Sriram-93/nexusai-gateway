@@ -52,6 +52,7 @@ function ModelHub() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [showActiveOnly, setShowActiveOnly] = useState(false);
   const [selectedModel, setSelectedModel] = useState<EnrichedModel | null>(null);
 
   const { success, error: toastError } = useToast();
@@ -111,10 +112,11 @@ function ModelHub() {
 
   const filtered = useMemo(() =>
     models.filter((m) =>
-      !search ||
+      (!showActiveOnly || m.enabled) &&
+      (!search ||
       m.displayName.toLowerCase().includes(search.toLowerCase()) ||
-      m.modelId.toLowerCase().includes(search.toLowerCase())
-    ), [models, search]);
+      m.modelId.toLowerCase().includes(search.toLowerCase()))
+    ), [models, search, showActiveOnly]);
 
   const hasProviders = providers.length > 0;
 
@@ -147,7 +149,11 @@ function ModelHub() {
                 className="glass-input h-9 pl-9 text-xs rounded-xl"
               />
             </div>
-            <p className="text-xs text-muted-foreground">{models.length} models across {providers.length} providers</p>
+            <div className="flex items-center gap-2 border-l border-[var(--glass-border)] pl-3">
+              <Switch checked={showActiveOnly} onCheckedChange={setShowActiveOnly} id="active-only" />
+              <label htmlFor="active-only" className="text-xs text-muted-foreground cursor-pointer">Enabled Only</label>
+            </div>
+            <p className="text-xs text-muted-foreground ml-auto">{models.length} models across {providers.length} providers</p>
             <Button onClick={loadAll} variant="outline" size="sm" className="glass h-9 rounded-lg text-xs gap-1.5">
               <RefreshCw className="h-3.5 w-3.5" /> Sync
             </Button>
