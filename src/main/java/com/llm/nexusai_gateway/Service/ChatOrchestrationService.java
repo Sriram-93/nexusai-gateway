@@ -368,18 +368,15 @@ public class ChatOrchestrationService {
                             });
                     })
                     .onErrorResume(err -> {
-                        log.error("[FALLBACK] Cascade failed on {}: {}", fallbackArmKey, err.getMessage());
-                        long latency = System.currentTimeMillis() - start;
-                        return Mono.just(new ChatResponse(
-                            "Error: All providers failed. Last error: " + err.getMessage(),
-                            "system (all-failed)", latency));
+                        log.warn("[FALLBACK] Candidate {} failed ({}), cascading to remaining candidates...", fallbackArmKey, err.getMessage());
+                        return handleFailureWithFallback(err, request, context, fallbackDecision, start, tenantId, userId);
                     });
             }
         }
 
         long latency = System.currentTimeMillis() - start;
-        log.error("[FALLBACK] No remaining candidates for tenant={}", tenantId);
-        return Mono.just(new ChatResponse("Error: " + failReason + " — no fallback providers available.",
+        log.error("[FALLBACK] All fallback candidate providers exhausted for tenant={}", tenantId);
+        return Mono.just(new ChatResponse("Error: All available providers failed. Last error: " + failReason,
             originalDecision.selectedProvider() + " (Failed)", latency));
     }
 
