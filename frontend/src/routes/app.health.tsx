@@ -163,26 +163,52 @@ function ModelHealthPage() {
     }
   };
 
-  const rateLimitedCount = useMemo(() => data?.models?.filter(m => m.healthStatus === "RATE_LIMITED").length ?? 0, [data]);
+  const tabModels = useMemo(() => {
+    if (!data?.models) return [];
+    return data.models.filter(m => viewTab === "ACTIVE" ? m.enabled : true);
+  }, [data, viewTab]);
+
+  const healthyCount = useMemo(() => tabModels.filter(m => m.healthStatus === "HEALTHY").length, [tabModels]);
+  const rateLimitedCount = useMemo(() => tabModels.filter(m => m.healthStatus === "RATE_LIMITED").length, [tabModels]);
+  const degradedCount = useMemo(() => tabModels.filter(m => m.healthStatus === "DEGRADED").length, [tabModels]);
+  const unreachableCount = useMemo(() => tabModels.filter(m => m.healthStatus === "UNREACHABLE" || m.healthStatus === "UNKNOWN").length, [tabModels]);
+  const totalCount = useMemo(() => viewTab === "ACTIVE" ? tabModels.length : (data?.totalModels ?? tabModels.length), [tabModels, viewTab, data]);
+
+  const avgLatency = useMemo(() => {
+    const tested = tabModels.filter(m => m.lastHealthLatencyMs != null && m.lastHealthLatencyMs > 0);
+    if (tested.length === 0) return 0;
+    const sum = tested.reduce((acc, m) => acc + (m.lastHealthLatencyMs || 0), 0);
+    return Math.round(sum / tested.length);
+  }, [tabModels]);
 
   const filteredModels = useMemo(() => {
-    if (!data?.models) return [];
-    return data.models.filter(m => {
-      const matchesTab = viewTab === "ACTIVE" ? m.enabled : true;
+    return tabModels.filter(m => {
       const matchesSearch =
         m.modelId.toLowerCase().includes(search.toLowerCase()) ||
         m.providerSlug.toLowerCase().includes(search.toLowerCase()) ||
         (m.displayName && m.displayName.toLowerCase().includes(search.toLowerCase()));
       const matchesStatus = statusFilter === "ALL" || m.healthStatus === statusFilter;
-      return matchesTab && matchesSearch && matchesStatus;
+      return matchesSearch && matchesStatus;
     });
-  }, [data, search, statusFilter, viewTab]);
+  }, [tabModels, search, statusFilter]);
 
   const getLatencyColor = (ms: number | null) => {
     if (ms == null) return "text-muted-foreground";
     if (ms < 500) return "text-emerald-500";
     if (ms < 1500) return "text-amber-500";
     return "text-rose-500";
+  };
+
+  const formatErrorMsg = (err: string | undefined | null) => {
+    if (!err) return "";
+    const lower = err.toLowerCase();
+    if (lower.includes("401")) return "Unauthorized (401)";
+    if (lower.includes("403")) return "Access Denied (403)";
+    if (lower.includes("404")) return "Model Not Found (404)";
+    if (lower.includes("429")) return "Rate Limited (429)";
+    if (lower.includes("400")) return "Bad Request (400) - Unsupported Model";
+    if (lower.includes("500") || lower.includes("502") || lower.includes("503")) return "Provider API Offline";
+    return "Endpoint Unreachable";
   };
 
   return (
@@ -223,19 +249,19 @@ function ModelHealthPage() {
             className="h-9 rounded-xl text-xs grad-primary text-primary-foreground font-medium gap-1.5 shadow-sm"
           >
             {runningScan ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Activity className="h-3.5 w-3.5" />}
-            Run Health Scan
+            Run System Health Scan Now
           </Button>
         </div>
 
         {/* KPI Row */}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
           {[
-            { label: "Total Registered", value: data?.totalModels ?? 0, icon: Server, color: "text-foreground", sub: "Monitored Arms" },
-            { label: "Healthy", value: data?.healthyCount ?? 0, icon: CheckCircle2, color: "text-emerald-500", sub: "200 OK" },
+            { label: "Total Monitored", value: totalCount, icon: Server, color: "text-foreground", sub: viewTab === "ACTIVE" ? "Active Gateway Arms" : "All Candidates" },
+            { label: "Healthy", value: healthyCount, icon: CheckCircle2, color: "text-emerald-500", sub: "Operational 200 OK" },
             { label: "Rate Limited", value: rateLimitedCount, icon: AlertTriangle, color: "text-amber-500", sub: "429 Throttled" },
-            { label: "Degraded", value: (data?.degradedCount ?? 0) - rateLimitedCount, icon: Gauge, color: "text-amber-600", sub: "Slow / Errors" },
-            { label: "Unreachable", value: data?.unreachableCount ?? 0, icon: WifiOff, color: "text-rose-500", sub: "404 / 401" },
-            { label: "Avg Latency", value: `${data?.averageLatencyMs ?? 0}ms`, icon: Zap, color: "text-cyan", sub: "Live Response" },
+            { label: "Degraded", value: degradedCount, icon: Gauge, color: "text-amber-600", sub: "Slow Response" },
+            { label: "Unreachable", value: unreachableCount, icon: WifiOff, color: "text-rose-500", sub: "404/401/Pending" },
+            { label: "Avg Latency", value: `${avgLatency}ms`, icon: Zap, color: "text-cyan", sub: "Live Response" },
           ].map((kpi, i) => (
             <motion.div
               key={kpi.label}
@@ -358,7 +384,7 @@ function ModelHealthPage() {
                       </td>
                       <td className="max-w-[200px] truncate text-[0.75rem]">
                         {m.lastHealthError ? (
-                          <span className="text-rose-400">{m.lastHealthError}</span>
+                          <span className="text-rose-400">{formatErrorMsg(m.lastHealthError)}</span>
                         ) : m.healthStatus === "RATE_LIMITED" ? (
                           <span className="text-amber-400">Operational — rate limited (429)</span>
                         ) : m.healthStatus === "HEALTHY" ? (
@@ -429,7 +455,7 @@ function ModelHealthPage() {
                     {lg.healthy ? (
                       <span className="text-emerald-400 font-medium">200 OK ({lg.latencyMs}ms)</span>
                     ) : (
-                      <span className="text-rose-400 font-medium">{lg.error || lg.message || "FAILED"}</span>
+                      <span className="text-rose-400 font-medium">{formatErrorMsg(lg.error || lg.message)}</span>
                     )}
                   </div>
                 </div>

@@ -421,13 +421,18 @@ export const chatApi = {
       body: JSON.stringify(req),
     }),
   agentChat: (req: ChatRequest) =>
-    request<{ answer: string; provider: string; latencyMs: number }>(
-      "/api/agent/chat",
-      {
-        method: "POST",
-        body: JSON.stringify(req),
-      },
-    ),
+    request<{
+      answer: string;
+      latencyMs: number;
+      intent: any;
+      context: any;
+      policy: any;
+      routing: any;
+      quality: any;
+    }>("/api/agent/chat", {
+      method: "POST",
+      body: JSON.stringify(req),
+    }),
   getLogs: () => request<RequestLog[]>("/api/logs"),
   getReputations: () => request<Record<string, unknown>>("/api/reputations"),
   clearCache: () => request<void>("/api/cache/clear", { method: "POST" }),

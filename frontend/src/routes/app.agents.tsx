@@ -33,19 +33,21 @@ function Agents() {
     setRunning(true);
     setResult(null);
     setRunError(null);
+    setActiveIdx(0);
     try {
-      // Simulate agent progression
-      for (let i = 0; i < agents.length; i++) {
-        setActiveIdx(i);
-        await new Promise((r) => setTimeout(r, 200));
-      }
       const res = await chatApi.agentChat({
         message: prompt,
         userId: "agent-console",
         priority: "HIGH",
       });
+      
       setResult(res);
-      setActiveIdx(null);
+      // Simulate agent progression with the actual result data
+      for (let i = 0; i < agents.length; i++) {
+        setActiveIdx(i);
+        await new Promise((r) => setTimeout(r, 800)); // Delay to show step
+      }
+      setActiveIdx(agents.length);
     } catch (err: any) {
       if (err.status === 401) {
         setRunError("API key required. Provision a tenant first via the API Keys page.");
@@ -93,6 +95,9 @@ function Agents() {
               {agents.map((agent, i) => {
                 const isActive = activeIdx === i;
                 const isDone = activeIdx !== null && i < activeIdx;
+                const agentKey = agent.name.toLowerCase().replace("agent", "");
+                const traceData = result ? result[agentKey as keyof typeof result] : null;
+
                 return (
                   <div key={agent.name}>
                     <motion.div
@@ -147,6 +152,17 @@ function Agents() {
                           <p className="mt-1.5 text-[0.625rem] text-muted-foreground/60">
                             Depends on: {agent.dependencies.join(", ")}
                           </p>
+                        )}
+
+                        {/* Trace Data Display */}
+                        {(isActive || isDone) && traceData && (
+                          <motion.div
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: "auto" }}
+                            className="mt-3 rounded-lg border border-[var(--glass-border)] bg-[var(--surface-inset)] p-3 font-mono text-[0.65rem] text-muted-foreground overflow-x-auto"
+                          >
+                            <pre>{JSON.stringify(traceData, null, 2)}</pre>
+                          </motion.div>
                         )}
                       </div>
                     </motion.div>

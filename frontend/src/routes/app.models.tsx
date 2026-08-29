@@ -118,25 +118,25 @@ function ModelHub() {
       m.modelId.toLowerCase().includes(search.toLowerCase()));
     }), [models, search, showActiveOnly]);
 
-  const hasProviders = providers.length > 0;
+  const hasData = providers.length > 0 || models.length > 0;
 
   return (
     <AppShell title="Model Hub" subtitle="Browse, configure, and assign model access across your workspace">
       {/* No providers guard */}
-      {!loading && !hasProviders && (
-        <div className="section-panel p-16 text-center">
-          <Lock className="mx-auto mb-4 h-12 w-12 text-muted-foreground opacity-40" />
-          <p className="text-sm font-semibold">Model Hub is locked</p>
-          <p className="mt-1.5 text-xs text-muted-foreground max-w-xs mx-auto">
+      {!loading && !hasData && (
+        <div className="section-panel p-16 text-center border border-[var(--glass-border)] bg-[var(--glass-bg)]">
+          <Lock className="mx-auto mb-4 h-12 w-12 text-muted-foreground opacity-50" />
+          <p className="text-base font-semibold text-foreground">Model Hub is locked</p>
+          <p className="mt-2 text-sm text-muted-foreground max-w-sm mx-auto">
             Connect at least one AI provider to unlock the Model Hub and discover available models.
           </p>
-          <Button className="grad-primary mt-6 h-10 rounded-xl text-sm text-primary-foreground">
+          <Button onClick={() => navigate({ to: '/app/providers' })} className="grad-primary mt-6 h-10 rounded-xl text-sm font-medium text-white">
             <ChevronRight className="mr-1 h-4 w-4" /> Go to Provider Hub
           </Button>
         </div>
       )}
 
-      {hasProviders && (
+      {hasData && (
         <>
           {/* Controls */}
           <div className="mb-6 flex flex-wrap items-center gap-3">
@@ -383,7 +383,10 @@ function ModelHub() {
 
                       <Authorize roles={["TEAM_LEAD", "TEAM_MEMBER", "SOLO", "ORG_ADMIN"]}>
                         <Button 
-                          onClick={() => navigate({ to: '/app/sandbox' })}
+                          onClick={() => navigate({ 
+                            to: '/app/sandbox', 
+                            search: { model: selectedModel.modelId, provider: selectedModel.providerSlug } 
+                          })}
                           className="w-full mt-4 grad-primary h-9 text-xs rounded-xl text-primary-foreground"
                         >
                           <FlaskConical className="h-3.5 w-3.5 mr-1.5" /> Try in Sandbox

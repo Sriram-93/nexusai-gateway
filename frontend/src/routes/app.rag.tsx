@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Database, Plus, Trash2, Search, FileText, Sparkles, RefreshCw } from "lucide-react";
+import { Database, Plus, Trash2, Search, FileText, Sparkles, RefreshCw, Upload } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -82,6 +82,19 @@ function KnowledgeBaseStudio() {
     } finally {
       setIsSearching(false);
     }
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    setDocName(file.name);
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      setContent(ev.target?.result as string);
+    };
+    reader.readAsText(file);
+    e.target.value = ''; // Reset input
   };
 
   const handleDelete = async (id: string) => {
@@ -226,9 +239,15 @@ function KnowledgeBaseStudio() {
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
                     <label className="text-[0.6875rem] font-medium text-muted-foreground">Content</label>
-                    {content.length > 0 && (
-                      <span className="text-[0.6rem] text-muted-foreground/50 font-mono">{content.length} chars</span>
-                    )}
+                    <div className="flex items-center gap-2">
+                      <label className="cursor-pointer flex items-center gap-1 text-[0.65rem] font-medium text-emerald bg-emerald/10 hover:bg-emerald/20 px-2 py-0.5 rounded transition-colors">
+                        <Upload className="h-3 w-3" /> Upload File
+                        <input type="file" accept=".txt,.md,.json,.csv" className="hidden" onChange={handleFileUpload} />
+                      </label>
+                      {content.length > 0 && (
+                        <span className="text-[0.6rem] text-muted-foreground/50 font-mono">{content.length} chars</span>
+                      )}
+                    </div>
                   </div>
                   <textarea
                     rows={8}

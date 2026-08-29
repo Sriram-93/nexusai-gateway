@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { useState, useEffect, useRef } from "react";
 import {
   Brain, Play, Sparkles, Terminal, Zap, AlertTriangle, ArrowRight,
-  Radio, ToggleLeft, ToggleRight, CircleDollarSign, ShieldAlert, BookOpen,
+  Radio, ToggleLeft, ToggleRight, CircleDollarSign, ShieldAlert, BookOpen, Target
 } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,12 @@ import { IntegrationGuideModal } from "@/components/nexus/IntegrationGuideModal"
 import { chatApi, telemetryApi, providersApi, type ChatResponse, type BudgetStatus } from "@/lib/api";
 
 export const Route = createFileRoute("/app/sandbox")({
+  validateSearch: (search: Record<string, unknown>) => {
+    return {
+      model: (search.model as string) || "",
+      provider: (search.provider as string) || "",
+    };
+  },
   head: () => ({
     meta: [
       { title: "Sandbox — NexusAI" },
@@ -28,7 +34,10 @@ export const Route = createFileRoute("/app/sandbox")({
 const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080") as string;
 
 function Sandbox() {
+  const { model: queryModel, provider: queryProvider } = Route.useSearch();
   const [prompt, setPrompt] = useState("Summarize the key benefits of federated learning in three concise bullets.");
+  const [targetModel, setTargetModel] = useState<string>(queryModel || "");
+  const [targetProvider, setTargetProvider] = useState<string>(queryProvider || "");
   const [result, setResult] = useState<ChatResponse | null>(null);
   const [streamTokens, setStreamTokens] = useState<string[]>([]);
   const [streamDone, setStreamDone] = useState(false);
@@ -40,6 +49,11 @@ function Sandbox() {
   const [budgetStatus, setBudgetStatus] = useState<BudgetStatus | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const streamBoxRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (queryModel) setTargetModel(queryModel);
+    if (queryProvider) setTargetProvider(queryProvider);
+  }, [queryModel, queryProvider]);
 
   useEffect(() => {
     Promise.all([
@@ -78,7 +92,8 @@ function Sandbox() {
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
           body: JSON.stringify({
-            model: "auto",
+            model: targetModel || "auto",
+            ...(targetProvider ? { provider: targetProvider } : {}),
             stream: true,
             messages: [{ role: "user", content: prompt }],
           }),
@@ -125,6 +140,7 @@ function Sandbox() {
           message: prompt,
           userId: "sandbox-user",
           priority: "HIGH",
+          ...(targetModel ? { model: targetModel, provider: targetProvider } : {}),
         });
         setResult(response);
       } catch (err: any) {
@@ -229,6 +245,20 @@ function Sandbox() {
               )}
             </div>
           </div>
+
+          {targetModel && (
+            <div className="mb-3 flex items-center justify-between rounded-xl border border-cyan/30 bg-cyan/5 px-3 py-2 text-xs">
+              <span className="text-cyan font-medium flex items-center gap-1.5">
+                <Target className="h-3.5 w-3.5" /> Direct Routing Target: <code className="font-mono bg-cyan/10 px-1.5 py-0.5 rounded text-foreground">{targetModel}</code>
+              </span>
+              <button
+                onClick={() => { setTargetModel(""); setTargetProvider(""); }}
+                className="text-muted-foreground hover:text-foreground text-[0.7rem] underline ml-2"
+              >
+                Reset to Auto (Bandit)
+              </button>
+            </div>
+          )}
 
           <Textarea
             value={prompt}
