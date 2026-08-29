@@ -48,7 +48,7 @@ export function BanditTuningStudio() {
             step="0.05"
             value={alpha}
             onChange={(e) => setAlpha(parseFloat(e.target.value))}
-            className="w-full h-1.5 bg-black/40 rounded-lg appearance-none cursor-pointer accent-indigo"
+            className="w-full h-1.5 bg-border rounded-lg appearance-none cursor-pointer accent-indigo"
           />
           <div className="flex justify-between text-[0.65rem] text-muted-foreground font-mono">
             <span>0.0 (Pure Exploitation)</span>
@@ -57,7 +57,7 @@ export function BanditTuningStudio() {
           </div>
         </div>
 
-        <div className="p-3 rounded-xl bg-black/30 border border-[var(--glass-border)] text-xs space-y-1.5">
+        <div className="p-3 rounded-xl bg-[var(--surface-subtle)] border border-[var(--glass-border)] text-xs space-y-1.5">
           <p className="font-semibold flex items-center gap-1 text-cyan">
             <Sparkles className="h-3.5 w-3.5" /> Exploration Dynamics
           </p>

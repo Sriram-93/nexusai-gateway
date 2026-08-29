@@ -50,7 +50,7 @@ export function BenchmarkVisualizer() {
       )}
 
       {!result && !running && (
-        <div className="p-8 text-center border border-dashed border-[var(--glass-border)] rounded-xl bg-black/20 text-xs text-muted-foreground">
+        <div className="p-8 text-center border border-dashed border-[var(--glass-border)] rounded-xl bg-[var(--surface-subtle)] text-xs text-muted-foreground">
           <Cpu className="mx-auto mb-2 h-6 w-6 opacity-40" />
           Click <strong>Run SLA Benchmark</strong> to evaluate multi-model latency, bandit distribution, and cache performance under load.
         </div>
@@ -88,7 +88,7 @@ export function BenchmarkVisualizer() {
           </div>
 
           {/* SLA Compliance Indicator */}
-          <div className="flex items-center justify-between p-3 rounded-xl border border-[var(--glass-border)] bg-black/30 text-xs">
+          <div className="flex items-center justify-between p-3 rounded-xl border border-[var(--glass-border)] bg-[var(--surface-subtle)] text-xs">
             <div className="flex items-center gap-2">
               {result.avgLatencyMs <= 2000 ? (
                 <CheckCircle2 className="h-4 w-4 text-emerald" />
@@ -118,7 +118,7 @@ export function BenchmarkVisualizer() {
                       <span className="text-cyan">{model}</span>
                       <span className="text-muted-foreground">{count} reqs ({pct}%)</span>
                     </div>
-                    <div className="h-1.5 bg-black/40 rounded-full overflow-hidden">
+                    <div className="h-1.5 bg-border rounded-full overflow-hidden">
                       <motion.div
                         initial={{ width: 0 }}
                         animate={{ width: `${pct}%` }}

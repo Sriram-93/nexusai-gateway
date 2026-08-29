@@ -125,7 +125,7 @@ function SecurityPolicy() {
                           ${(b.currentDailySpendUsd || 0).toFixed(2)} / ${(b.dailyCapUsd || 0).toFixed(2)} daily
                         </span>
                       </div>
-                      <div className="w-full bg-black/40 rounded-full h-1.5 overflow-hidden">
+                      <div className="w-full bg-border rounded-full h-1.5 overflow-hidden">
                         <div
                           className={`h-full transition-all ${isWarning ? "bg-amber" : "bg-cyan"}`}
                           style={{ width: `${pct}%` }}
@@ -139,7 +139,7 @@ function SecurityPolicy() {
           </div>
 
           {/* Upsert Policy Form */}
-          <form onSubmit={handleSaveBudget} className="p-4 rounded-xl border border-[var(--glass-border)] bg-black/40 space-y-3 text-xs">
+          <form onSubmit={handleSaveBudget} className="p-4 rounded-xl border border-[var(--glass-border)] bg-[var(--surface-subtle)] space-y-3 text-xs">
             <p className="font-medium text-foreground text-xs">Update Target Spend Policy</p>
             <div className="grid grid-cols-2 gap-2">
               <div>
@@ -147,7 +147,7 @@ function SecurityPolicy() {
                 <select
                   value={editingTarget.targetType}
                   onChange={(e) => setEditingTarget({ ...editingTarget, targetType: e.target.value })}
-                  className="w-full mt-1 bg-black/60 border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-foreground"
+                  className="w-full mt-1 bg-[var(--surface)] border border-[var(--border)] rounded-lg p-1.5 text-xs text-foreground"
                 >
                   <option value="ORGANIZATION">ORGANIZATION</option>
                   <option value="WORKSPACE">WORKSPACE</option>
@@ -161,7 +161,7 @@ function SecurityPolicy() {
                   type="text"
                   value={editingTarget.targetId}
                   onChange={(e) => setEditingTarget({ ...editingTarget, targetId: e.target.value })}
-                  className="w-full mt-1 bg-black/60 border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-foreground font-mono"
+                  className="w-full mt-1 bg-[var(--surface)] border border-[var(--border)] rounded-lg p-1.5 text-xs text-foreground font-mono"
                   placeholder="global"
                 />
               </div>
@@ -174,7 +174,7 @@ function SecurityPolicy() {
                   type="number"
                   value={editingTarget.dailyCapUsd}
                   onChange={(e) => setEditingTarget({ ...editingTarget, dailyCapUsd: Number(e.target.value) })}
-                  className="w-full mt-1 bg-black/60 border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-foreground font-mono"
+                  className="w-full mt-1 bg-[var(--surface)] border border-[var(--border)] rounded-lg p-1.5 text-xs text-foreground font-mono"
                 />
               </div>
               <div>
@@ -183,7 +183,7 @@ function SecurityPolicy() {
                   type="number"
                   value={editingTarget.monthlyCapUsd}
                   onChange={(e) => setEditingTarget({ ...editingTarget, monthlyCapUsd: Number(e.target.value) })}
-                  className="w-full mt-1 bg-black/60 border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-foreground font-mono"
+                  className="w-full mt-1 bg-[var(--surface)] border border-[var(--border)] rounded-lg p-1.5 text-xs text-foreground font-mono"
                 />
               </div>
             </div>
