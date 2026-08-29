@@ -358,21 +358,96 @@ function Sandbox() {
                 </div>
 
                 {result.armScores && Object.keys(result.armScores).length > 0 && (
-                  <div>
-                    <p className="mb-2 text-[0.65rem] uppercase tracking-[0.14em] text-muted-foreground flex items-center gap-1">
-                      <Brain className="h-3 w-3" /> LinUCB arm scores
-                    </p>
-                    <div className="space-y-1.5 max-h-48 overflow-y-auto pr-2">
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <p className="text-[0.65rem] uppercase tracking-[0.14em] text-muted-foreground flex items-center gap-1 font-semibold">
+                        <Brain className="h-3 w-3 text-cyan" /> LinUCB Bandit Arm Comparison
+                      </p>
+                      {targetModel && (
+                        <span className="text-[0.65rem] font-mono text-cyan bg-cyan/10 px-2 py-0.5 rounded border border-cyan/20 flex items-center gap-1">
+                          <Target className="h-3 w-3" /> Comparing: {targetModel}
+                        </span>
+                      )}
+                    </div>
+
+                    {targetModel && (() => {
+                      const sorted = Object.entries(result.armScores!).sort(([, a], [, b]) => b - a);
+                      const winnerArm = sorted[0];
+                      const targetArmEntry = sorted.find(([arm]) => 
+                        arm.toLowerCase().includes(targetModel.toLowerCase()) || 
+                        (targetProvider && arm.toLowerCase().includes(targetProvider.toLowerCase()))
+                      );
+
+                      if (targetArmEntry && winnerArm) {
+                        const isTargetWinner = targetArmEntry[0] === winnerArm[0];
+                        const delta = (winnerArm[1] - targetArmEntry[1]).toFixed(4);
+                        return (
+                          <div className={`p-2.5 rounded-xl border text-xs font-mono flex items-center justify-between ${
+                            isTargetWinner 
+                              ? "bg-emerald/10 border-emerald/30 text-emerald" 
+                              : "bg-cyan/10 border-cyan/30 text-foreground"
+                          }`}>
+                            <div>
+                              <span className="font-semibold block text-[0.7rem]">
+                                {isTargetWinner ? "🏆 Targeted Model Won LinUCB Selection!" : "🎯 Target Score vs Winner Score"}
+                              </span>
+                              <span className="text-[0.65rem] text-muted-foreground">
+                                Target ({targetArmEntry[0]}): <strong className="text-cyan">{targetArmEntry[1].toFixed(4)}</strong> | Winner ({winnerArm[0]}): <strong className="text-emerald">{winnerArm[1].toFixed(4)}</strong>
+                              </span>
+                            </div>
+                            {!isTargetWinner && (
+                              <span className="text-[0.65rem] bg-background/50 px-2 py-1 rounded text-amber font-mono shrink-0 ml-2">
+                                Δ -{delta}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
+
+                    <div className="space-y-1.5 max-h-52 overflow-y-auto pr-2">
                       {Object.entries(result.armScores)
                         .sort(([, a], [, b]) => b - a)
-                        .map(([arm, score]) => (
-                          <div key={arm} className="flex items-center justify-between text-xs">
-                            <span className="font-mono text-muted-foreground">{arm}</span>
-                            <span className={`font-mono ${arm === result.provider.split(" ")[0] ? "text-emerald" : "text-muted-foreground"}`}>
-                              {score.toFixed(4)}
-                            </span>
-                          </div>
-                        ))}
+                        .map(([arm, score], idx) => {
+                          const isWinner = idx === 0;
+                          const isTarget = targetModel && (
+                            arm.toLowerCase().includes(targetModel.toLowerCase()) ||
+                            (targetProvider && arm.toLowerCase().includes(targetProvider.toLowerCase()))
+                          );
+
+                          return (
+                            <div 
+                              key={arm} 
+                              className={`flex items-center justify-between text-xs p-1.5 rounded-lg transition-all ${
+                                isTarget
+                                  ? "bg-cyan/15 border border-cyan/40 font-semibold shadow-sm"
+                                  : isWinner
+                                  ? "bg-emerald/10 border border-emerald/30"
+                                  : "hover:bg-[var(--glass-hover)]"
+                              }`}
+                            >
+                              <span className="font-mono flex items-center gap-1.5 min-w-0 truncate">
+                                {isWinner && <span className="text-[0.65rem] text-emerald">🏆</span>}
+                                {isTarget && <Target className="h-3 w-3 text-cyan shrink-0 animate-pulse" />}
+                                <span className={isTarget ? "text-cyan font-bold truncate" : isWinner ? "text-emerald font-semibold truncate" : "text-muted-foreground truncate"}>
+                                  {arm}
+                                </span>
+                              </span>
+                              
+                              <div className="flex items-center gap-2 shrink-0">
+                                {isTarget && (
+                                  <span className="text-[0.6rem] bg-cyan/20 text-cyan px-1.5 py-0.5 rounded font-mono font-bold">
+                                    Target
+                                  </span>
+                                )}
+                                <span className={`font-mono ${isTarget ? "text-cyan font-bold" : isWinner ? "text-emerald font-bold" : "text-muted-foreground"}`}>
+                                  {score.toFixed(4)}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
                     </div>
                   </div>
                 )}
