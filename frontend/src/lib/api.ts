@@ -49,6 +49,11 @@ async function request<T>(
   const jwt = getJwt();
   if (jwt) headers["Authorization"] = `Bearer ${jwt}`;
 
+  const gatewayKey = typeof window !== "undefined" ? sessionStorage.getItem("nexus_api_key") : null;
+  if (gatewayKey && !headers["X-API-Key"]) {
+    headers["X-API-Key"] = gatewayKey;
+  }
+
 
 
   const url = `${getBaseUrl()}${path}`;
@@ -322,6 +327,24 @@ export const dashboardApi = {
         body: JSON.stringify({ strategy, ...(weights ? { weights } : {}) }),
       },
     ),
+  updateBanditHyperparameters: (alpha: number) =>
+    request<{ updated: boolean; alpha: number; activeEngine: string; message: string }>(
+      "/api/dashboard/settings/bandit",
+      {
+        method: "PATCH",
+        body: JSON.stringify({ alpha }),
+      },
+    ),
+  tripCircuitBreaker: (provider: string) =>
+    request<{ provider: string; cbState: string; message: string }>(
+      `/api/dashboard/circuit-breaker/${provider}/trip`,
+      { method: "POST" },
+    ),
+  resetCircuitBreaker: (provider: string) =>
+    request<{ provider: string; cbState: string; message: string }>(
+      `/api/dashboard/circuit-breaker/${provider}/reset`,
+      { method: "POST" },
+    ),
 };
 
 // ─── Providers API ────────────────────────────────────────────────────────────
@@ -380,6 +403,8 @@ export const providersApi = {
     ),
   listUnpricedModels: () => request<string[]>("/api/providers/pricing/unverified"),
   getStatus: () => request<ProviderStatus>("/api/providers/status"),
+  discoverAll: () =>
+    request<{ message: string }>("/api/providers/discover-all", { method: "POST" }),
   deleteProvider: (slug: string) =>
     request<{ message: string; modelsDisabled: number }>(
       `/api/providers/${slug}`,
@@ -526,7 +551,7 @@ export const teamsApi = {
   resendKeyEmail: (teamId: string, rawKey?: string) =>
     request<{ message: string }>(`/api/admin/teams/${teamId}/key/email`, {
       method: "POST",
-      body: rawKey ? JSON.stringify({ rawKey }) : undefined,
+      ...(rawKey ? { body: JSON.stringify({ rawKey }) } : {}),
     }),
   updateStatus: (teamId: string, active: boolean) =>
     request<{ active: boolean }>(`/api/admin/teams/${teamId}/status`, {
@@ -541,3 +566,185 @@ export const teamsApi = {
       body: JSON.stringify({ dailyBudgetUsd })
     })
 };
+
+// ─── Routing Simulation API ──────────────────────────────────────────────────
+
+export interface SimulationRequest {
+  prompt: string;
+  taskCategory: string;
+  qualityWeight: number;
+  costWeight: number;
+  latencyWeight: number;
+  reliabilityWeight: number;
+}
+
+export interface CandidateEvaluation {
+  armKey: string;
+  providerSlug: string;
+  modelId: string;
+  displayName: string;
+  qualityScore: number;
+  costScore: number;
+  latencyScore: number;
+  reliabilityScore: number;
+  healthScore: number;
+  finalScore: number;
+  estimatedCostUsd: number;
+  estimatedLatencyMs: number;
+  isWinner: boolean;
+  statusReason: string;
+}
+
+export interface SimulationResult {
+  selectedArmKey: string;
+  selectedModelDisplayName: string;
+  explanationReason: string;
+  policyWeights: Record<string, number>;
+  candidates: CandidateEvaluation[];
+}
+
+export const routingApi = {
+  simulate: (req: SimulationRequest) =>
+    request<SimulationResult>("/api/routing/simulate", {
+      method: "POST",
+      body: JSON.stringify(req),
+    }),
+};
+
+// ─── Telemetry & Governance API ──────────────────────────────────────────────
+
+export interface AuditLogEntry {
+  id: string;
+  actorEmail: string;
+  action: string;
+  resource: string;
+  organizationId: string | null;
+  metadataJson: string | null;
+  timestamp: string;
+}
+
+export interface BudgetEntry {
+  id: string;
+  targetType: string;
+  targetId: string;
+  dailyCapUsd: number;
+  monthlyCapUsd: number;
+  currentDailySpendUsd: number;
+  currentMonthlySpendUsd: number;
+  actionOnExceeded: string;
+  lastResetAt: string;
+}
+
+export interface BudgetStatus {
+  targetType: string;
+  targetId: string;
+  allowed: boolean;
+  dailyCapUsd: number;
+  currentDailySpendUsd: number;
+  monthlyCapUsd: number;
+  currentMonthlySpendUsd: number;
+  is80PercentWarning: boolean;
+  dailyUtilizationPct: number;
+  message: string;
+}
+
+export const telemetryApi = {
+  getAuditLogs: (limit = 50) =>
+    request<AuditLogEntry[]>(`/api/telemetry/audit-logs?limit=${limit}`),
+  getAllBudgets: () => request<BudgetEntry[]>("/api/telemetry/budget"),
+  upsertBudget: (body: {
+    targetType: string;
+    targetId: string;
+    dailyCapUsd: number;
+    monthlyCapUsd: number;
+    actionOnExceeded?: string;
+  }) =>
+    request<BudgetEntry>("/api/telemetry/budget", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  getBudgetStatus: (targetId: string, targetType = "ORGANIZATION") =>
+    request<BudgetStatus>(
+      `/api/telemetry/budget/${encodeURIComponent(targetId)}?targetType=${targetType}`
+    ),
+  runBenchmark: (requests = 10) =>
+    request<{
+      totalRequests: number;
+      successfulRequests: number;
+      avgLatencyMs: number;
+      cacheHits: number;
+      cacheHitRatioPct: number;
+      modelDistribution: Record<String, number>;
+    }>(`/api/telemetry/benchmark?requests=${requests}`, { method: "POST" }),
+};
+
+export interface ApiKeyRecord {
+  id: string;
+  name: string;
+  keyPrefix: string;
+  environment: string;
+  status: string;
+  createdAt: string;
+  lastUsedAt?: string;
+  projectId?: string;
+  rawSecretKey?: string;
+}
+
+export const keysApi = {
+  getKeys: (projectId?: string) =>
+    request<ApiKeyRecord[]>(`/api/keys${projectId ? `?projectId=${projectId}` : ""}`),
+  createKey: (data: { name: string; environment?: string; projectId?: string }) =>
+    request<ApiKeyRecord>("/api/keys", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  revokeKey: (id: string) =>
+    request<{ id: string; status: string; message: string }>(`/api/keys/${id}`, {
+      method: "DELETE",
+    }),
+};
+
+export interface CacheStats {
+  hits: number;
+  misses: number;
+  hitRatio: number;
+  costSavedUsd: number;
+  latencySavedMs: number;
+  redisActive?: boolean;
+}
+
+export const cacheApi = {
+  getStats: () => request<CacheStats>("/api/cache/stats"),
+  flushCache: () =>
+    request<{ status: string; message: string }>("/api/cache/flush", {
+      method: "POST",
+    }),
+};
+
+export interface KnowledgeChunk {
+  id: string;
+  documentName: string;
+  content: string;
+  similarityScore: number;
+  metadata: Record<string, String>;
+}
+
+export const ragApi = {
+  getChunks: () => request<KnowledgeChunk[]>("/api/rag/chunks"),
+  ingestChunk: (chunk: { documentName: string; content: string; metadata?: Record<string, string> }) =>
+    request<{ message: string; documentName: string; totalChunks: number }>("/api/rag/chunks", {
+      method: "POST",
+      body: JSON.stringify(chunk),
+    }),
+  search: (query: string, topK = 5) =>
+    request<KnowledgeChunk[]>(`/api/rag/search?topK=${topK}`, {
+      method: "POST",
+      body: JSON.stringify({ query }),
+    }),
+  deleteChunk: (id: string) =>
+    request<{ id: string; deleted: boolean }>(`/api/rag/chunks/${id}`, {
+      method: "DELETE",
+    }),
+};
+
+

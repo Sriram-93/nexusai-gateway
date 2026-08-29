@@ -21,6 +21,8 @@ public class SecurityConfig {
     public SecurityWebFilterChain filterChain(ServerHttpSecurity http) {
         return http
             .csrf(ServerHttpSecurity.CsrfSpec::disable) // Disable CSRF for stateless REST APIs
+            .formLogin(ServerHttpSecurity.FormLoginSpec::disable) // Disable default Spring Security HTML form login
+            .httpBasic(ServerHttpSecurity.HttpBasicSpec::disable) // Disable HTTP Basic auth
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .authorizeExchange(auth -> auth
                 // Allow public access to signup and login

@@ -2,7 +2,7 @@ import { ComponentType } from "react";
 import {
   Activity, BarChart3, Boxes, FlaskConical, Hexagon, KeyRound,
   LayoutDashboard, Route as RouteIcon, ScrollText, ShieldAlert, Network,
-  TestTubeDiagonal, Database, Users, Building2, Server
+  TestTubeDiagonal, Database, Users, Building2, Server, Zap
 } from "lucide-react";
 import type { UserRole } from "./user-context";
 
@@ -62,6 +62,7 @@ export function getNavigation(role: UserRole, isLocked: boolean): NavSection[] {
             { to: "/app/providers", label: "Providers", icon: Boxes },
             { to: "/app/models", label: "Models", icon: Database },
             { to: "/app/routing", label: "Routing", icon: RouteIcon },
+            { to: "/app/cache", label: "Prompt Cache", icon: Zap },
             { to: "/app/keys", label: "API Keys", icon: KeyRound },
           ],
         },
@@ -158,6 +159,8 @@ export function getNavigation(role: UserRole, isLocked: boolean): NavSection[] {
             { to: "/app/providers", label: "Providers", icon: Boxes },
             { to: "/app/models", label: "Models", icon: Database },
             { to: "/app/routing", label: "Routing", icon: RouteIcon },
+            { to: "/app/cache", label: "Prompt Cache", icon: Zap },
+            { to: "/app/rag", label: "Knowledge RAG", icon: Database },
             { to: "/app/keys", label: "API Keys", icon: KeyRound },
           ],
         },
@@ -165,6 +168,7 @@ export function getNavigation(role: UserRole, isLocked: boolean): NavSection[] {
           group: "OBSERVABILITY",
           items: [
             { to: "/app/analytics", label: "Analytics", icon: BarChart3 },
+            { to: "/app/health", label: "Model Health", icon: Activity },
             { to: "/app/logs", label: "My Logs", icon: ScrollText },
           ],
         },
@@ -179,16 +183,15 @@ export function getNavigation(role: UserRole, isLocked: boolean): NavSection[] {
       break;
   }
 
-  // Filter out locked items if necessary
   if (isLocked) {
-    const allowedLockedRoutes = ["/app", "/app/providers", "/app/keys"];
+    const allowedLockedRoutes = ["/app", "/app/providers", "/app/models", "/app/keys"];
     return nav.map(section => ({
       ...section,
       items: section.items.map(item => ({
         ...item,
         disabled: !allowedLockedRoutes.includes(item.to)
       }))
-    })).filter(section => section.items.length > 0);
+    }));
   }
 
   return nav;

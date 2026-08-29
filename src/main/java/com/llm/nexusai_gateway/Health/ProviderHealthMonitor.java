@@ -133,4 +133,8 @@ public class ProviderHealthMonitor {
     public ProviderHealthStatus getStatus(String providerArm) {
         return getOrCreate(providerArm);
     }
+
+    public Map<String, ProviderHealthStatus> getAllStatuses() {
+        return new java.util.HashMap<>(registry);
+    }
 }

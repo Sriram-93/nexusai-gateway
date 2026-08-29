@@ -115,12 +115,19 @@ public class ProviderManagementController {
         if (tenantId == null) return ResponseEntity.status(401).body(Map.of("error", "Authentication required"));
 
         List<ProviderSummary> summaries = providerConfigRepository.findByTenantId(tenantId).stream()
-            .map(p -> new ProviderSummary(
-                p.getId(), p.getDisplayName(), p.getSlug(), p.getType().name(),
-                p.isEnabled(), p.getLastDiscoveredAt() != null ? p.getLastDiscoveredAt().toString() : null,
-                modelRepository.findByProviderSlugAndEnabledTrue(p.getSlug()).size(),
-                p.getApiKey() != null && !p.getApiKey().isBlank()
-            ))
+            .map(p -> {
+                boolean hasKey = p.getApiKey() != null && !p.getApiKey().isBlank();
+                int enabledCount = (hasKey && p.isEnabled())
+                    ? modelRepository.findByProviderSlugAndEnabledTrue(p.getSlug()).size()
+                    : 0;
+                return new ProviderSummary(
+                    p.getId(), p.getDisplayName(), p.getSlug(), p.getType().name(),
+                    p.isEnabled() && hasKey,
+                    p.getLastDiscoveredAt() != null ? p.getLastDiscoveredAt().toString() : null,
+                    enabledCount,
+                    hasKey
+                );
+            })
             .collect(Collectors.toList());
         return ResponseEntity.ok(summaries);
     }
@@ -183,6 +190,51 @@ public class ProviderManagementController {
                 ));
             })
             .orElse(ResponseEntity.notFound().build());
+    }
+
+    /** Trigger a global model re-discovery for all active providers. */
+    @PostMapping("/discover-all")
+    public ResponseEntity<?> discoverAll() {
+        discoveryService.discoverAllProviders();
+        return ResponseEntity.ok(Map.of("message", "Global provider discovery initiated for all active providers."));
+    }
+
+    /**
+     * POST /api/providers/gemini/test-and-load-reasoning
+     * Live tests all candidate Gemini models against Google API, filters out 404/deprecated models,
+     * and enables ONLY verified working reasoning models for routing.
+     */
+    @PostMapping("/gemini/test-and-load-reasoning")
+    public reactor.core.publisher.Mono<ResponseEntity<?>> testAndLoadGeminiReasoningModels(
+            @RequestParam(required = false) String apiKey) {
+        return reactor.core.publisher.Mono.fromCallable(() -> discoveryService.testAndLoadWorkingGeminiModels(apiKey))
+            .subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic())
+            .map(ResponseEntity::ok);
+    }
+
+    /**
+     * POST /api/providers/{slug}/test-and-load
+     * Live tests candidate models for ANY specified provider against their API,
+     * disables unauthorized/failing endpoints, and enables ONLY working models.
+     */
+    @PostMapping("/{slug}/test-and-load")
+    public reactor.core.publisher.Mono<ResponseEntity<?>> testAndLoadProviderModels(
+            @PathVariable String slug,
+            @RequestParam(required = false) String apiKey) {
+        return reactor.core.publisher.Mono.fromCallable(() -> discoveryService.testAndLoadWorkingModelsForProvider(slug, apiKey))
+            .subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic())
+            .map(ResponseEntity::ok);
+    }
+
+    /**
+     * POST /api/providers/test-and-load-all
+     * Live tests candidate models across all configured providers.
+     */
+    @PostMapping("/test-and-load-all")
+    public reactor.core.publisher.Mono<ResponseEntity<?>> testAndLoadAllProviders() {
+        return reactor.core.publisher.Mono.fromCallable(() -> discoveryService.testAndLoadAllProviders())
+            .subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic())
+            .map(ResponseEntity::ok);
     }
 
     /** Enable or disable a provider (tenant-scoped). */
@@ -277,6 +329,9 @@ public class ProviderManagementController {
      * or directly from a Bearer JWT in the Authorization header.
      */
     private String resolveTenantId(String tenantIdHeader, String authHeader) {
+        if (tenantIdHeader != null && !tenantIdHeader.isBlank()) {
+            return tenantIdHeader;
+        }
         if (authHeader != null && authHeader.startsWith("Bearer ")) {
             try {
                 String token = authHeader.substring(7);

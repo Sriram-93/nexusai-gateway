@@ -117,7 +117,7 @@ public class ProviderConfig {
     @Transient
     public void setApiKey(String apiKey) {
         if (this.credentials == null) this.credentials = new java.util.HashMap<>();
-        if (apiKey != null) {
+        if (apiKey != null && !apiKey.isBlank()) {
             this.credentials.put("api_key", apiKey);
         } else {
             this.credentials.remove("api_key");

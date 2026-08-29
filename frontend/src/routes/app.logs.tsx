@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { motion } from "motion/react";
 import { useMemo, useState, useEffect } from "react";
-import { Search, ScrollText, RefreshCw } from "lucide-react";
+import { Search, ScrollText, RefreshCw, AlertCircle } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -52,13 +52,20 @@ function Logs() {
     [rows, q],
   );
 
+  const getLatencyColor = (ms: number) => {
+    if (ms < 500) return "text-emerald";
+    if (ms < 2000) return "text-amber";
+    return "text-rose";
+  };
+
   return (
-    <AppShell title="Logs" subtitle="Full request audit trail from the database">
-      <div className="glass overflow-hidden rounded-2xl">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4">
+    <AppShell title="Request Logs" subtitle="Full request audit trail from the database">
+      <div className="section-panel">
+        {/* Toolbar */}
+        <div className="section-panel-header">
           <div className="flex items-center gap-2">
             <ScrollText className="h-4 w-4 text-cyan" />
-            <p className="text-sm font-medium tracking-tight">
+            <p className="text-[0.8125rem] font-semibold tracking-tight">
               {loading ? "Loading…" : `${filtered.length} of ${rows.length} entries`}
             </p>
           </div>
@@ -69,53 +76,67 @@ function Logs() {
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
                 placeholder="Filter by provider, model, status…"
-                className="h-9 w-64 rounded-lg border-[var(--glass-border)] bg-[var(--glass-bg)] pl-9 text-xs backdrop-blur-md"
+                className="h-8 w-56 rounded-lg border-border bg-background pl-9 text-xs"
               />
             </div>
             <Button
               onClick={load}
               variant="outline"
               size="sm"
-              className="glass h-9 rounded-lg text-xs"
+              className="h-8 rounded-lg text-xs border-border gap-1.5"
             >
               <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+              Refresh
             </Button>
           </div>
         </div>
 
+        {/* Error state */}
         {error && (
-          <div className="px-5 py-4 text-xs text-destructive border-b border-destructive/20 bg-destructive/5">
-            {error}
+          <div className="flex items-start gap-3 px-5 py-4 border-b border-destructive/20 bg-destructive/5">
+            <AlertCircle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
+            <div>
+              <p className="text-xs font-medium text-destructive">Unable to load request logs</p>
+              <p className="text-[0.6875rem] text-muted-foreground mt-0.5">{error}</p>
+              <button onClick={load} className="text-[0.6875rem] text-cyan hover:underline mt-1">Retry</button>
+            </div>
           </div>
         )}
 
+        {/* Table */}
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[52rem] text-sm">
+          <table className="data-table min-w-[52rem]">
             <thead>
-              <tr className="text-left text-[0.7rem] uppercase tracking-[0.14em] text-muted-foreground">
+              <tr>
                 {["Timestamp", "Tenant", "Provider", "Model", "Tokens", "Cost", "Latency", "Status"].map((h) => (
-                  <th key={h} className="px-5 py-3 font-medium">
-                    {h}
-                  </th>
+                  <th key={h}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {loading && Array.from({ length: 6 }).map((_, i) => (
-                <tr key={i} className="border-t">
+                <tr key={i}>
                   {Array.from({ length: 8 }).map((_, j) => (
-                    <td key={j} className="px-5 py-3">
-                      <div className="h-3 animate-pulse rounded bg-[var(--glass-hover)]" />
+                    <td key={j}>
+                      <div className="skeleton h-3.5 w-full" />
                     </td>
                   ))}
                 </tr>
               ))}
               {!loading && filtered.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-5 py-8 text-center text-xs text-muted-foreground">
-                    {rows.length === 0
-                      ? "No requests have been routed yet. Use the Sandbox to send your first request."
-                      : "No results match your filter."}
+                  <td colSpan={8} className="!py-12 text-center">
+                    <ScrollText className="mx-auto mb-3 h-8 w-8 text-muted-foreground/20" />
+                    <p className="text-[0.8125rem] text-muted-foreground">
+                      {rows.length === 0
+                        ? "No requests routed yet"
+                        : "No results match your filter"}
+                    </p>
+                    <p className="text-[0.6875rem] text-muted-foreground/60 mt-1">
+                      {rows.length === 0
+                        ? "Use the Sandbox to send your first request through the gateway."
+                        : "Try adjusting your search terms."}
+                    </p>
                   </td>
                 </tr>
               )}
@@ -125,29 +146,29 @@ function Logs() {
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={{ delay: Math.min(i * 0.01, 0.3) }}
-                  className="border-t transition-colors hover:bg-[var(--glass-hover)]"
                 >
-                  <td className="px-5 py-3 font-mono text-xs text-muted-foreground">
+                  <td className="font-mono text-[0.75rem] text-muted-foreground whitespace-nowrap">
                     {r.timestamp ? new Date(r.timestamp).toLocaleString() : "—"}
                   </td>
-                  <td className="px-5 py-3 font-mono text-xs text-muted-foreground">{r.tenantId || "—"}</td>
-                  <td className="px-5 py-3">{r.provider || "—"}</td>
-                  <td className="px-5 py-3 font-mono text-xs text-cyan">{r.model || "—"}</td>
-                  <td className="px-5 py-3 text-muted-foreground">{r.tokenUsage?.toLocaleString() ?? 0}</td>
-                  <td className="px-5 py-3 font-mono text-xs">${(r.costUsd ?? 0).toFixed(5)}</td>
-                  <td className="px-5 py-3">
-                    <span className={(r.latencyMs ?? 0) < 500 ? "text-emerald" : "text-amber"}>
+                  <td className="font-mono text-[0.75rem] text-muted-foreground">{r.tenantId || "—"}</td>
+                  <td className="text-[0.8125rem]">{r.provider || "—"}</td>
+                  <td className="font-mono text-[0.75rem] text-cyan">{r.model || "—"}</td>
+                  <td className="text-muted-foreground tabular-nums">{r.tokenUsage?.toLocaleString() ?? 0}</td>
+                  <td className="font-mono text-[0.75rem] tabular-nums">${(r.costUsd ?? 0).toFixed(5)}</td>
+                  <td>
+                    <span className={`font-mono text-[0.75rem] font-medium ${getLatencyColor(r.latencyMs ?? 0)}`}>
                       {r.latencyMs ?? 0}ms
                     </span>
                   </td>
-                  <td className="px-5 py-3">
+                  <td>
                     <span
-                      className={`rounded-full border px-2.5 py-0.5 text-[0.7rem] font-medium ${
+                      className={`badge ${
                         r.status === "success"
-                          ? "border-[color-mix(in_oklab,var(--emerald)_40%,transparent)] bg-[color-mix(in_oklab,var(--emerald)_14%,transparent)] text-emerald"
-                          : "border-[color-mix(in_oklab,var(--destructive)_40%,transparent)] bg-[color-mix(in_oklab,var(--destructive)_14%,transparent)] text-destructive"
+                          ? "badge-success"
+                          : "badge-danger"
                       }`}
                     >
+                      <span className={`h-1 w-1 rounded-full ${r.status === "success" ? "bg-emerald" : "bg-rose"}`} />
                       {r.status === "success" ? "Success" : r.status ?? "—"}
                     </span>
                   </td>

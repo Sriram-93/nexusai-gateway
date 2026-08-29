@@ -64,6 +64,18 @@ public class InMemoryVectorStore implements VectorSearchService {
     }
 
     @Override
+    public synchronized List<KnowledgeChunk> getAllChunks() {
+        return index.stream()
+            .map(doc -> new KnowledgeChunk(doc.id, doc.documentName, doc.content, 1.0, doc.metadata))
+            .toList();
+    }
+
+    @Override
+    public synchronized boolean deleteChunk(String id) {
+        return index.removeIf(doc -> doc.id.equals(id));
+    }
+
+    @Override
     public List<KnowledgeChunk> search(String query, int topK) {
         if (query == null || query.isBlank()) {
             return Collections.emptyList();

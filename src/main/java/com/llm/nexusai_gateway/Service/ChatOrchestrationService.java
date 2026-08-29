@@ -8,6 +8,7 @@ import com.llm.nexusai_gateway.Decision.RoutingEngineManager;
 import com.llm.nexusai_gateway.Decision.RoutingStrategy;
 import com.llm.nexusai_gateway.Evaluation.QualityEvaluator;
 import com.llm.nexusai_gateway.Evaluation.QualityScore;
+import com.llm.nexusai_gateway.Governance.BudgetService;
 import com.llm.nexusai_gateway.Model.ChatRequest;
 import com.llm.nexusai_gateway.Model.ChatResponse;
 import com.llm.nexusai_gateway.Model.RequestLog;
@@ -18,6 +19,7 @@ import com.llm.nexusai_gateway.Provider.ProviderResponse;
 import com.llm.nexusai_gateway.Reputation.ReputationService;
 import com.llm.nexusai_gateway.Provider.ModelRegistry;
 import com.llm.nexusai_gateway.Reward.RewardCalculator;
+import com.llm.nexusai_gateway.Telemetry.RequestTracingService;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
@@ -57,6 +59,8 @@ public class ChatOrchestrationService {
     private final LoggingService loggingService;
     private final ResponseCacheService responseCacheService;
     private final RateLimitingService rateLimitingService;
+    private final BudgetService budgetService;
+    private final RequestTracingService tracingService;
 
     // Request collapsing for cache stampede protection (existing pattern, kept)
     private final ConcurrentHashMap<String, Mono<ProviderResponse>> inFlightRequests = new ConcurrentHashMap<>();
@@ -73,7 +77,9 @@ public class ChatOrchestrationService {
             LoggingService loggingService,
             ResponseCacheService responseCacheService,
             RateLimitingService rateLimitingService,
-            ModelRegistry modelRegistry) {
+            ModelRegistry modelRegistry,
+            BudgetService budgetService,
+            RequestTracingService tracingService) {
         this.contextExtractor = contextExtractor;
         this.policyFilter = policyFilter;
         this.decisionEngine = decisionEngine;
@@ -86,6 +92,8 @@ public class ChatOrchestrationService {
         this.responseCacheService = responseCacheService;
         this.rateLimitingService = rateLimitingService;
         this.modelRegistry = modelRegistry;
+        this.budgetService = budgetService;
+        this.tracingService = tracingService;
     }
 
     /**
@@ -93,9 +101,33 @@ public class ChatOrchestrationService {
      */
     public Mono<ChatResponse> process(ChatRequest request) {
         long start = System.currentTimeMillis();
+        String userId = request.getUserId() != null ? request.getUserId() : "anonymous";
 
         // Step 1: Context Extraction
         return contextExtractor.extract(request).flatMap(context -> {
+
+        String tenantId = context != null && context.tenantId() != null ? context.tenantId() : "global";
+
+        // Phase 4: Budget Enforcement — check cap before touching any provider
+        BudgetService.BudgetCheckResult budgetCheck = budgetService.checkBudgetAllowed("ORGANIZATION", tenantId);
+        if (!budgetCheck.allowed()) {
+            tracingService.traceBudgetEnforcement(tenantId, userId, budgetCheck.currentDailySpendUsd(), budgetCheck.dailyCapUsd());
+            return Mono.just(new ChatResponse(
+                "Error: " + budgetCheck.message() + " — Daily spend $"
+                    + String.format("%.2f", budgetCheck.currentDailySpendUsd()) + " of $"
+                    + String.format("%.2f", budgetCheck.dailyCapUsd()) + " cap.",
+                "system (budget-enforcer)", 0));
+        }
+        // Emit 80% warning trace asynchronously (non-blocking)
+        if (budgetCheck.is80PercentWarningTriggered()) {
+            log.warn("Budget 80% threshold reached for tenant={}: ${}/{}", tenantId,
+                String.format("%.2f", budgetCheck.currentDailySpendUsd()),
+                String.format("%.2f", budgetCheck.dailyCapUsd()));
+        }
+
+        // Phase 5: Trace incoming request (PII-redacted, async, non-blocking)
+        tracingService.traceGatewayRequest(tenantId, userId, request.getMessage(),
+            request.getModel() != null ? request.getModel() : "auto");
 
         // Step 2: Build eligible arm list from the registry — no hardcoded models.
         List<String> allProviders = modelRegistry.getEnabledArmKeys();
@@ -121,7 +153,15 @@ public class ChatOrchestrationService {
                 decision = decisionEngine.select(context, eligibleProviders);
             } else {
                 // Static override
-                String reqModel = request.getModel() != null && !request.getModel().isBlank() ? request.getModel() : "default";
+                String reqModel = request.getModel();
+                if (reqModel == null || reqModel.isBlank()) {
+                    String prefix = reqProv + ":";
+                    reqModel = modelRegistry.getEnabledArmKeys().stream()
+                        .filter(arm -> arm.toLowerCase().startsWith(prefix))
+                        .map(arm -> arm.substring(prefix.length()))
+                        .findFirst()
+                        .orElse("default");
+                }
                 double health = 1.0;
                 double quality = 0.5;
                 double latency = 1000.0;
@@ -142,6 +182,11 @@ public class ChatOrchestrationService {
 
         log.info("AEDF Decision: provider={}, model={}, strategy={}, reason={}",
                  decision.selectedProvider(), decision.selectedModel(), decision.strategy(), decision.reason());
+
+        // Phase 5: Trace routing decision (async)
+        tracingService.traceRoutingDecision(tenantId, userId,
+            decision.selectedProvider() + ":" + decision.selectedModel(),
+            decision.strategy().name(), decision.reason());
 
         LlmProvider provider = providerRegistry.getProviderWithTenantKey(
             decision.selectedProvider(),
@@ -187,6 +232,11 @@ public class ChatOrchestrationService {
                                 logToDb(context, request, response.content(), decision, latency, "SUCCESS",
                                         response.inputTokens(), response.outputTokens());
 
+                                // Phase 4: Record actual spend in Budget ledger (async-safe, non-blocking)
+                                if (costUsd > 0) {
+                                    budgetService.recordSpend("ORGANIZATION", tenantId, costUsd);
+                                }
+
                                 ChatResponse chatResponse = new ChatResponse(response.content(),
                                     decision.selectedProvider() + " (" + decision.selectedModel() + ")", latency);
                                 chatResponse.setActiveEngine(decision.strategy().name());
@@ -196,7 +246,7 @@ public class ChatOrchestrationService {
                                 return chatResponse;
                             });
                     })
-                    .onErrorResume(e -> handleFailureWithFallback(e, request, context, decision, start))
+                    .onErrorResume(e -> handleFailureWithFallback(e, request, context, decision, start, tenantId, userId))
             );
         });
     }
@@ -242,43 +292,56 @@ public class ChatOrchestrationService {
     }
 
     /**
-     * Handle provider failure with fallback to next best provider.
+     * Phase 6: Multi-provider fallback with full tracing.
+     * Handles circuit-breaker OPENs and transient provider failures.
+     * Records failure in reputation, deprioritizes the arm, and cascades
+     * to the next-best available candidate scored by the decision engine.
      */
     private Mono<ChatResponse> handleFailureWithFallback(Throwable error, ChatRequest request,
                                                           RequestContext context,
-                                                          ExplainedDecision originalDecision, long start) {
-        String failReason = error instanceof CallNotPermittedException
-            ? "Circuit Breaker OPEN" : error.getMessage();
-        
-        String failedArmKey = originalDecision.selectedProvider() + ":" + originalDecision.selectedModel();
-        log.warn("Provider {} failed: {}", failedArmKey, failReason);
+                                                          ExplainedDecision originalDecision, long start,
+                                                          String tenantId, String userId) {
+        boolean isCircuitOpen = error instanceof CallNotPermittedException;
+        String failReason = isCircuitOpen ? "Circuit Breaker OPEN" : error.getMessage();
 
-        // Record failure in reputation
+        String failedArmKey = originalDecision.selectedProvider() + ":" + originalDecision.selectedModel();
+        log.warn("[FALLBACK] Provider {} failed: {}", failedArmKey, failReason);
+
+        // Phase 5: Trace the failure event (async)
+        if (isCircuitOpen) {
+            tracingService.traceCircuitBreakerOpen(tenantId, failedArmKey);
+        }
+
+        // Record failure in reputation & learning engine
         reputationService.update(failedArmKey, 0.0, 0, 0.0, false);
         decisionEngine.updateWithComponents(context, failedArmKey, 0.0, new double[]{0.0, 0.0, 0.0, 0.0});
 
-        // Try fallback: pick next best provider from remaining eligible
+        // Build remaining candidates (excluding the failed arm)
         List<String> remaining = originalDecision.armScores().keySet().stream()
             .filter(p -> !p.equals(failedArmKey))
             .collect(Collectors.toList());
 
         if (!remaining.isEmpty()) {
             ExplainedDecision fallbackDecision = decisionEngine.select(context, remaining);
-            LlmProvider fallbackProvider = providerRegistry.getProvider(fallbackDecision.selectedProvider());
+            String fallbackArmKey = (fallbackDecision.selectedProvider() + ":" + fallbackDecision.selectedModel()).toLowerCase();
 
-            if (fallbackProvider != null) {
-                String fallbackArmKey = (fallbackDecision.selectedProvider() + ":" + fallbackDecision.selectedModel()).toLowerCase();
+            // Phase 5: Trace fallback cascade event
+            tracingService.traceFallback(tenantId, userId, failedArmKey, fallbackArmKey, failReason);
+
+            LlmProvider tenantFallbackProvider = providerRegistry.getProviderWithTenantKey(
+                fallbackDecision.selectedProvider(),
+                context != null ? context.tenantId() : null
+            );
+            if (tenantFallbackProvider == null) {
+                tenantFallbackProvider = providerRegistry.getProvider(fallbackDecision.selectedProvider());
+            }
+
+            if (tenantFallbackProvider != null) {
                 CircuitBreaker fallbackCb = circuitBreakerRegistry.circuitBreaker(fallbackArmKey);
+                final LlmProvider finalProvider = tenantFallbackProvider;
 
-                // Use tenant-scoped key for fallback provider too
-                LlmProvider tenantFallbackProvider = providerRegistry.getProviderWithTenantKey(
-                    fallbackDecision.selectedProvider(),
-                    context != null ? context.tenantId() : null
-                );
-                if (tenantFallbackProvider == null) tenantFallbackProvider = fallbackProvider;
-
-                return getCollapsedChat(tenantFallbackProvider, fallbackDecision.selectedProvider(), request.getMessage(),
-                                        fallbackDecision.selectedModel(), fallbackCb)
+                return getCollapsedChat(finalProvider, fallbackDecision.selectedProvider(),
+                                        request.getMessage(), fallbackDecision.selectedModel(), fallbackCb)
                     .flatMap(response -> {
                         long latency = System.currentTimeMillis() - start;
                         double costUsd = estimateCost(fallbackDecision.selectedProvider(),
@@ -289,6 +352,9 @@ public class ChatOrchestrationService {
                             .map(reward -> {
                                 logToDb(context, request, response.content(), fallbackDecision, latency,
                                         "FALLBACK_RECOVERY", response.inputTokens(), response.outputTokens());
+
+                                // Phase 4: Record fallback cost in budget ledger
+                                if (costUsd > 0) budgetService.recordSpend("ORGANIZATION", tenantId, costUsd);
 
                                 ChatResponse chatResponse = new ChatResponse(response.content(),
                                     originalDecision.selectedProvider() + " (" + failReason +
@@ -302,16 +368,18 @@ public class ChatOrchestrationService {
                             });
                     })
                     .onErrorResume(err -> {
+                        log.error("[FALLBACK] Cascade failed on {}: {}", fallbackArmKey, err.getMessage());
                         long latency = System.currentTimeMillis() - start;
                         return Mono.just(new ChatResponse(
-                            "Error: All providers failed. " + err.getMessage(),
-                            "system (all failed)", latency));
+                            "Error: All providers failed. Last error: " + err.getMessage(),
+                            "system (all-failed)", latency));
                     });
             }
         }
 
         long latency = System.currentTimeMillis() - start;
-        return Mono.just(new ChatResponse("Error: " + failReason,
+        log.error("[FALLBACK] No remaining candidates for tenant={}", tenantId);
+        return Mono.just(new ChatResponse("Error: " + failReason + " — no fallback providers available.",
             originalDecision.selectedProvider() + " (Failed)", latency));
     }
 

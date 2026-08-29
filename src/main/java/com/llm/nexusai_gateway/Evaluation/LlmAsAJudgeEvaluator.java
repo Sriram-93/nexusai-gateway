@@ -9,12 +9,14 @@ import com.llm.nexusai_gateway.Repository.ProviderConfigRepository;
 import com.llm.nexusai_gateway.Repository.RegisteredModelRepository;
 import com.llm.nexusai_gateway.Security.GatewaySecurityFilter;
 import com.llm.nexusai_gateway.Tenant.TenantConfig;
+import com.llm.nexusai_gateway.Telemetry.RequestTracingService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 
+import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
 
@@ -27,6 +29,7 @@ import java.util.List;
  * and global configurations, rather than hardcoding any specific provider.
  */
 @Service
+@Primary
 public class LlmAsAJudgeEvaluator implements QualityEvaluator {
 
     private static final Logger log = LoggerFactory.getLogger(LlmAsAJudgeEvaluator.class);
@@ -35,15 +38,18 @@ public class LlmAsAJudgeEvaluator implements QualityEvaluator {
     private final HeuristicQualityEvaluator heuristicFallback;
     private final RegisteredModelRepository registeredModelRepository;
     private final ProviderConfigRepository providerConfigRepository;
+    private final RequestTracingService tracingService;
 
     public LlmAsAJudgeEvaluator(ProviderRegistry providerRegistry, 
                                 HeuristicQualityEvaluator heuristicFallback,
                                 RegisteredModelRepository registeredModelRepository,
-                                ProviderConfigRepository providerConfigRepository) {
+                                ProviderConfigRepository providerConfigRepository,
+                                RequestTracingService tracingService) {
         this.providerRegistry = providerRegistry;
         this.heuristicFallback = heuristicFallback;
         this.registeredModelRepository = registeredModelRepository;
         this.providerConfigRepository = providerConfigRepository;
+        this.tracingService = tracingService;
     }
 
     @Override
@@ -54,13 +60,13 @@ public class LlmAsAJudgeEvaluator implements QualityEvaluator {
 
         return Mono.deferContextual(ctx -> {
             TenantConfig tenant = ctx.getOrDefault(GatewaySecurityFilter.TENANT_CONTEXT_KEY, null);
-            String tenantId = tenant != null ? tenant.getTenantId() : null;
+            String tenantId = tenant != null ? tenant.getTenantId() : "global";
 
             // 1. Get all active models sorted by fastest latency
             List<RegisteredModel> fastModels = registeredModelRepository.findEnabledOrderByLatencyAsc();
             
             // 2. Get tenant's explicit provider configurations
-            List<ProviderConfig> tenantProviders = (tenantId != null) ? 
+            List<ProviderConfig> tenantProviders = (tenantId != null && !"global".equals(tenantId)) ? 
                 providerConfigRepository.findByTenantIdAndEnabledTrue(tenantId) : Collections.emptyList();
 
             String providerSlug = null;
@@ -84,13 +90,17 @@ public class LlmAsAJudgeEvaluator implements QualityEvaluator {
             }
 
             if (providerSlug == null) {
-                log.info("No external LLM judge provider configured for tenant. Using heuristic quality evaluation.");
-                return heuristicFallback.evaluate(prompt, response, taskCategory);
+                log.debug("No external LLM judge provider configured for tenant. Using heuristic quality evaluation.");
+                return heuristicFallback.evaluate(prompt, response, taskCategory)
+                    .doOnNext(score -> tracingService.traceQualityEvaluation(tenantId, "heuristic", "HEURISTIC",
+                        score.compositeScore(), score.completeness(), score.relevance(), score.formatCompliance()));
             }
 
             LlmProvider judge = providerRegistry.getProvider(providerSlug);
             if (judge == null) {
-                return heuristicFallback.evaluate(prompt, response, taskCategory);
+                return heuristicFallback.evaluate(prompt, response, taskCategory)
+                    .doOnNext(score -> tracingService.traceQualityEvaluation(tenantId, "heuristic", "HEURISTIC",
+                        score.compositeScore(), score.completeness(), score.relevance(), score.formatCompliance()));
             }
 
             String gradingPrompt = buildGradingPrompt(prompt, response, taskCategory);
@@ -98,10 +108,18 @@ public class LlmAsAJudgeEvaluator implements QualityEvaluator {
             final String activeProvider = providerSlug;
             final String activeModel = modelName;
             return judge.chat(activeProvider, gradingPrompt, activeModel)
+                .timeout(Duration.ofSeconds(5))
                 .map(judgeResponse -> parseScores(judgeResponse.content()))
+                .doOnNext(score -> {
+                    log.info("LLM-as-a-Judge ({}:{}) evaluated composite={:.3f}", activeProvider, activeModel, score.compositeScore());
+                    tracingService.traceQualityEvaluation(tenantId, activeProvider + ":" + activeModel, "LLM_JUDGE",
+                        score.compositeScore(), score.completeness(), score.relevance(), score.formatCompliance());
+                })
                 .onErrorResume(err -> {
                     log.warn("LLM-as-a-Judge ({}:{}) failed: {}. Falling back to heuristic evaluation.", activeProvider, activeModel, err.getMessage());
-                    return heuristicFallback.evaluate(prompt, response, taskCategory);
+                    return heuristicFallback.evaluate(prompt, response, taskCategory)
+                        .doOnNext(score -> tracingService.traceQualityEvaluation(tenantId, "heuristic_fallback", "HEURISTIC_FALLBACK",
+                            score.compositeScore(), score.completeness(), score.relevance(), score.formatCompliance()));
                 });
         });
     }

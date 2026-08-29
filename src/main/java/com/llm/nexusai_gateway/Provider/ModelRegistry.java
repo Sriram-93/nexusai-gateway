@@ -57,12 +57,36 @@ public class ModelRegistry {
     // ─── Public API ───────────────────────────────────────────────────────────
 
     /**
+     * Returns all registered models from the DB repository.
+     */
+    public List<RegisteredModel> getAllModels() {
+        return modelRepository.findAll();
+    }
+
+    /**
+     * Returns all enabled registered models from the DB repository.
+     */
+    public List<RegisteredModel> getEnabledModels() {
+        return modelRepository.findByEnabledTrue();
+    }
+
+    /**
      * Returns all enabled arm keys from the DB.
      * This is what the routing engine uses to build the eligible provider list.
      */
     public List<String> getEnabledArmKeys() {
         List<String> dbArms = modelRepository.findByEnabledTrue().stream()
             .map(RegisteredModel::getArmKey)
+            .filter(arm -> {
+                String id = arm.toLowerCase();
+                // Exclude non-chat model arms (audio, prompt-guard, embeddings, TTS)
+                return !id.contains("whisper") && 
+                       !id.contains("prompt-guard") && 
+                       !id.contains("orpheus") && 
+                       !id.contains("embedding") && 
+                       !id.contains("tts") &&
+                       !id.contains("image-generation");
+            })
             .collect(Collectors.toList());
 
         if (!dbArms.isEmpty()) {
@@ -104,9 +128,15 @@ public class ModelRegistry {
      * Returns 0.0 if the arm is not registered (free/unknown).
      */
     public double computeCostUsd(String armKey, int inputTokens, int outputTokens) {
-        return findByArmKey(armKey)
+        double cost = findByArmKey(armKey)
             .map(m -> m.computeCostUsd(inputTokens, outputTokens))
             .orElse(0.0);
+        if (cost <= 0.0) {
+            int inTok = Math.max(1, inputTokens);
+            int outTok = Math.max(1, outputTokens);
+            cost = (inTok * 0.25 / 1_000_000.0) + (outTok * 0.75 / 1_000_000.0);
+        }
+        return cost;
     }
 
     /**
@@ -158,7 +188,7 @@ public class ModelRegistry {
                 model.setOutputPricePer1M(props.getOutputPricePer1M());
                 model.setEstimatedLatencyMs(props.getEstimatedLatencyMs());
                 model.setContextWindowTokens(props.getContextWindowTokens());
-                model.setEnabled(props.isEnabled());
+                model.setEnabled(false);
                 model.setPricingVerified(props.getInputPricePer1M() > 0);
                 modelRepository.save(model);
                 seeded++;

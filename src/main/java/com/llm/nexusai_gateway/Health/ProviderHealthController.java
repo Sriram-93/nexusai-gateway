@@ -24,6 +24,15 @@ public class ProviderHealthController {
     }
 
     /**
+     * GET /api/health
+     * Returns standard system health status.
+     */
+    @GetMapping
+    public Mono<Map<String, String>> getHealth() {
+        return Mono.just(Map.of("status", "UP", "service", "NexusAI Gateway"));
+    }
+
+    /**
      * GET /api/health/providers
      * Returns live circuit breaker state, error rates, and average latency for all provider arms.
      */

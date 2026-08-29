@@ -137,6 +137,18 @@ public class ProviderRegistry {
         return providers;
     }
 
+    /**
+     * Resolves just the runtime API key for a provider + tenant combination.
+     * Used by streaming path to pass the key to StreamingLlmProvider.
+     */
+    public String resolveRuntimeKey(String providerSlug, String tenantId) {
+        if (tenantId == null) return null;
+        return providerConfigRepository.findBySlugAndTenantId(providerSlug, tenantId)
+            .map(ProviderConfig::getApiKey)
+            .filter(k -> k != null && !k.isBlank())
+            .orElse(null);
+    }
+
     // ─── Inner class: binds a specific slug to the generic adapter ─────────────
 
     /**

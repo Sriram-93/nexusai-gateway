@@ -10,6 +10,12 @@ public class ChatRequest {
 
     public ChatRequest() {}
 
+    public ChatRequest(String message, String userId) {
+        this.message = message;
+        this.userId = userId;
+        this.priority = Priority.MEDIUM;
+    }
+
     public ChatRequest(String message, String userId, String tenantId, Priority priority, String provider, String model) {
         this.message = message;
         this.userId = userId;
@@ -61,6 +67,10 @@ public class ChatRequest {
 
     public String getModel() {
         return model;
+    }
+
+    public void setModel(String model) {
+        this.model = model;
     }
 
     private String pipelineName;

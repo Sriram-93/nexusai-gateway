@@ -1,38 +1,102 @@
 import { motion } from "motion/react";
+import { useEffect, useState } from "react";
 
-/** Slow glowing mesh gradients (cyan / emerald / amber) behind everything. */
+/**
+ * Cinematic ambient mesh — vibrant aurora that drifts and animates.
+ * Provides a dynamic, premium feel to the background.
+ */
 export function MeshBackground({ className = "" }: { className?: string }) {
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      setMousePos({ x: e.clientX, y: e.clientY });
+    };
+    window.addEventListener("mousemove", handleMouseMove);
+    return () => window.removeEventListener("mousemove", handleMouseMove);
+  }, []);
+
   return (
     <div
       aria-hidden
-      className={`pointer-events-none fixed inset-0 z-0 overflow-hidden ${className}`}
-      style={{ opacity: "var(--mesh-opacity)" }}
+      className={`pointer-events-none fixed inset-0 z-0 overflow-hidden bg-background ${className}`}
     >
+      {/* Primary cyan — top left, large and vibrant */}
       <motion.div
-        className="absolute -left-40 -top-40 h-[46rem] w-[46rem] rounded-full blur-[140px]"
-        style={{ background: "radial-gradient(circle, var(--cyan), transparent 65%)" }}
-        animate={{ x: [0, 90, -30, 0], y: [0, 60, 20, 0], scale: [1, 1.12, 0.96, 1] }}
-        transition={{ duration: 34, repeat: Infinity, ease: "easeInOut" }}
+        className="absolute -left-[10%] -top-[10%] h-[60vh] w-[60vh] rounded-full mix-blend-screen dark:mix-blend-lighten"
+        style={{
+          background: "radial-gradient(circle, color-mix(in srgb, var(--cyan) 18%, transparent), transparent 70%)",
+          filter: "blur(90px)",
+        }}
+        animate={{
+          x: [0, 120, -50, 0],
+          y: [0, 80, 20, 0],
+          scale: [1, 1.2, 0.9, 1],
+        }}
+        transition={{ duration: 25, repeat: Infinity, ease: "easeInOut" }}
       />
+
+      {/* Secondary indigo — right side, warm accent */}
       <motion.div
-        className="absolute -right-52 top-1/4 h-[40rem] w-[40rem] rounded-full blur-[150px]"
-        style={{ background: "radial-gradient(circle, var(--emerald), transparent 65%)" }}
-        animate={{ x: [0, -80, 20, 0], y: [0, 70, -40, 0], scale: [1, 1.08, 1.02, 1] }}
-        transition={{ duration: 42, repeat: Infinity, ease: "easeInOut" }}
+        className="absolute -right-[10%] top-[30%] h-[50vh] w-[50vh] rounded-full mix-blend-screen dark:mix-blend-lighten"
+        style={{
+          background: "radial-gradient(circle, color-mix(in srgb, var(--indigo) 15%, transparent), transparent 70%)",
+          filter: "blur(90px)",
+        }}
+        animate={{
+          x: [0, -100, 40, 0],
+          y: [0, 60, -40, 0],
+          scale: [1, 1.15, 0.95, 1],
+        }}
+        transition={{ duration: 28, repeat: Infinity, ease: "easeInOut" }}
       />
+
+      {/* Tertiary emerald — bottom left, subtle warmth */}
       <motion.div
-        className="absolute bottom-[-16rem] left-1/3 h-[34rem] w-[34rem] rounded-full blur-[140px]"
-        style={{ background: "radial-gradient(circle, var(--amber), transparent 68%)" }}
-        animate={{ x: [0, 60, -60, 0], y: [0, -50, 10, 0], scale: [1, 1.15, 1, 1] }}
-        transition={{ duration: 38, repeat: Infinity, ease: "easeInOut" }}
+        className="absolute -bottom-[20%] left-[20%] h-[60vh] w-[60vh] rounded-full mix-blend-screen dark:mix-blend-lighten"
+        style={{
+          background: "radial-gradient(circle, color-mix(in srgb, var(--emerald) 12%, transparent), transparent 70%)",
+          filter: "blur(100px)",
+        }}
+        animate={{
+          x: [0, 80, -80, 0],
+          y: [0, -60, 20, 0],
+          scale: [1, 1.1, 1, 1],
+        }}
+        transition={{ duration: 32, repeat: Infinity, ease: "easeInOut" }}
       />
-      <div
-        className="absolute inset-0 opacity-[0.25] dark:opacity-[0.18]"
+
+      {/* Interactive mouse follow glow */}
+      <motion.div
+        className="absolute h-[40vh] w-[40vh] rounded-full mix-blend-screen dark:mix-blend-lighten"
+        style={{
+          background: "radial-gradient(circle, color-mix(in srgb, var(--cyan) 10%, transparent), transparent 70%)",
+          filter: "blur(80px)",
+        }}
+        animate={{
+          x: mousePos.x - window.innerWidth / 2,
+          y: mousePos.y - window.innerHeight / 2,
+        }}
+        transition={{ type: "tween", ease: "easeOut", duration: 1.5 }}
+      />
+
+      {/* Animated Dot grid — structural texture that slowly pans */}
+      <motion.div
+        className="absolute inset-[-100%] opacity-[0.25] dark:opacity-[0.15]"
         style={{
           backgroundImage:
-            "linear-gradient(var(--glass-border) 1px, transparent 1px), linear-gradient(90deg, var(--glass-border) 1px, transparent 1px)",
-          backgroundSize: "64px 64px",
-          maskImage: "radial-gradient(ellipse at 50% 0%, black, transparent 75%)",
+            "radial-gradient(circle, var(--muted-foreground) 1px, transparent 1px)",
+          backgroundSize: "32px 32px",
+          maskImage: "radial-gradient(ellipse at center, black 40%, transparent 80%)",
+        }}
+        animate={{
+          y: [0, -32],
+          x: [0, -32],
+        }}
+        transition={{
+          duration: 4,
+          repeat: Infinity,
+          ease: "linear",
         }}
       />
     </div>

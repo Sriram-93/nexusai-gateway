@@ -15,12 +15,15 @@ import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as AppIndexRouteImport } from './routes/app.index'
 import { Route as AppAgentsRouteImport } from './routes/app.agents'
 import { Route as AppAnalyticsRouteImport } from './routes/app.analytics'
+import { Route as AppCacheRouteImport } from './routes/app.cache'
+import { Route as AppHealthRouteImport } from './routes/app.health'
 import { Route as AppKeysRouteImport } from './routes/app.keys'
 import { Route as AppLabsRouteImport } from './routes/app.labs'
 import { Route as AppLogsRouteImport } from './routes/app.logs'
 import { Route as AppMembersRouteImport } from './routes/app.members'
 import { Route as AppModelsRouteImport } from './routes/app.models'
 import { Route as AppProvidersRouteImport } from './routes/app.providers'
+import { Route as AppRagRouteImport } from './routes/app.rag'
 import { Route as AppRoutingRouteImport } from './routes/app.routing'
 import { Route as AppSandboxRouteImport } from './routes/app.sandbox'
 import { Route as AppSecurityRouteImport } from './routes/app.security'
@@ -58,6 +61,16 @@ const AppAnalyticsRoute = AppAnalyticsRouteImport.update({
   path: '/analytics',
   getParentRoute: () => AppRoute,
 } as any)
+const AppCacheRoute = AppCacheRouteImport.update({
+  id: '/cache',
+  path: '/cache',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppHealthRoute = AppHealthRouteImport.update({
+  id: '/health',
+  path: '/health',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppKeysRoute = AppKeysRouteImport.update({
   id: '/keys',
   path: '/keys',
@@ -86,6 +99,11 @@ const AppModelsRoute = AppModelsRouteImport.update({
 const AppProvidersRoute = AppProvidersRouteImport.update({
   id: '/providers',
   path: '/providers',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppRagRoute = AppRagRouteImport.update({
+  id: '/rag',
+  path: '/rag',
   getParentRoute: () => AppRoute,
 } as any)
 const AppRoutingRoute = AppRoutingRouteImport.update({
@@ -125,12 +143,15 @@ export interface FileRoutesByFullPath {
   '/onboarding': typeof OnboardingRoute
   '/app/agents': typeof AppAgentsRoute
   '/app/analytics': typeof AppAnalyticsRoute
+  '/app/cache': typeof AppCacheRoute
+  '/app/health': typeof AppHealthRoute
   '/app/keys': typeof AppKeysRoute
   '/app/labs': typeof AppLabsRoute
   '/app/logs': typeof AppLogsRoute
   '/app/members': typeof AppMembersRoute
   '/app/models': typeof AppModelsRoute
   '/app/providers': typeof AppProvidersRoute
+  '/app/rag': typeof AppRagRoute
   '/app/routing': typeof AppRoutingRoute
   '/app/sandbox': typeof AppSandboxRoute
   '/app/security': typeof AppSecurityRoute
@@ -144,12 +165,15 @@ export interface FileRoutesByTo {
   '/onboarding': typeof OnboardingRoute
   '/app/agents': typeof AppAgentsRoute
   '/app/analytics': typeof AppAnalyticsRoute
+  '/app/cache': typeof AppCacheRoute
+  '/app/health': typeof AppHealthRoute
   '/app/keys': typeof AppKeysRoute
   '/app/labs': typeof AppLabsRoute
   '/app/logs': typeof AppLogsRoute
   '/app/members': typeof AppMembersRoute
   '/app/models': typeof AppModelsRoute
   '/app/providers': typeof AppProvidersRoute
+  '/app/rag': typeof AppRagRoute
   '/app/routing': typeof AppRoutingRoute
   '/app/sandbox': typeof AppSandboxRoute
   '/app/security': typeof AppSecurityRoute
@@ -165,12 +189,15 @@ export interface FileRoutesById {
   '/onboarding': typeof OnboardingRoute
   '/app/agents': typeof AppAgentsRoute
   '/app/analytics': typeof AppAnalyticsRoute
+  '/app/cache': typeof AppCacheRoute
+  '/app/health': typeof AppHealthRoute
   '/app/keys': typeof AppKeysRoute
   '/app/labs': typeof AppLabsRoute
   '/app/logs': typeof AppLogsRoute
   '/app/members': typeof AppMembersRoute
   '/app/models': typeof AppModelsRoute
   '/app/providers': typeof AppProvidersRoute
+  '/app/rag': typeof AppRagRoute
   '/app/routing': typeof AppRoutingRoute
   '/app/sandbox': typeof AppSandboxRoute
   '/app/security': typeof AppSecurityRoute
@@ -187,12 +214,15 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/app/agents'
     | '/app/analytics'
+    | '/app/cache'
+    | '/app/health'
     | '/app/keys'
     | '/app/labs'
     | '/app/logs'
     | '/app/members'
     | '/app/models'
     | '/app/providers'
+    | '/app/rag'
     | '/app/routing'
     | '/app/sandbox'
     | '/app/security'
@@ -206,12 +236,15 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/app/agents'
     | '/app/analytics'
+    | '/app/cache'
+    | '/app/health'
     | '/app/keys'
     | '/app/labs'
     | '/app/logs'
     | '/app/members'
     | '/app/models'
     | '/app/providers'
+    | '/app/rag'
     | '/app/routing'
     | '/app/sandbox'
     | '/app/security'
@@ -226,12 +259,15 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/app/agents'
     | '/app/analytics'
+    | '/app/cache'
+    | '/app/health'
     | '/app/keys'
     | '/app/labs'
     | '/app/logs'
     | '/app/members'
     | '/app/models'
     | '/app/providers'
+    | '/app/rag'
     | '/app/routing'
     | '/app/sandbox'
     | '/app/security'
@@ -291,6 +327,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAnalyticsRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/cache': {
+      id: '/app/cache'
+      path: '/cache'
+      fullPath: '/app/cache'
+      preLoaderRoute: typeof AppCacheRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/health': {
+      id: '/app/health'
+      path: '/health'
+      fullPath: '/app/health'
+      preLoaderRoute: typeof AppHealthRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/app/keys': {
       id: '/app/keys'
       path: '/keys'
@@ -331,6 +381,13 @@ declare module '@tanstack/react-router' {
       path: '/providers'
       fullPath: '/app/providers'
       preLoaderRoute: typeof AppProvidersRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/rag': {
+      id: '/app/rag'
+      path: '/rag'
+      fullPath: '/app/rag'
+      preLoaderRoute: typeof AppRagRouteImport
       parentRoute: typeof AppRoute
     }
     '/app/routing': {
@@ -381,12 +438,15 @@ declare module '@tanstack/react-router' {
 interface AppRouteChildren {
   AppAgentsRoute: typeof AppAgentsRoute
   AppAnalyticsRoute: typeof AppAnalyticsRoute
+  AppCacheRoute: typeof AppCacheRoute
+  AppHealthRoute: typeof AppHealthRoute
   AppKeysRoute: typeof AppKeysRoute
   AppLabsRoute: typeof AppLabsRoute
   AppLogsRoute: typeof AppLogsRoute
   AppMembersRoute: typeof AppMembersRoute
   AppModelsRoute: typeof AppModelsRoute
   AppProvidersRoute: typeof AppProvidersRoute
+  AppRagRoute: typeof AppRagRoute
   AppRoutingRoute: typeof AppRoutingRoute
   AppSandboxRoute: typeof AppSandboxRoute
   AppSecurityRoute: typeof AppSecurityRoute
@@ -399,12 +459,15 @@ interface AppRouteChildren {
 const AppRouteChildren: AppRouteChildren = {
   AppAgentsRoute: AppAgentsRoute,
   AppAnalyticsRoute: AppAnalyticsRoute,
+  AppCacheRoute: AppCacheRoute,
+  AppHealthRoute: AppHealthRoute,
   AppKeysRoute: AppKeysRoute,
   AppLabsRoute: AppLabsRoute,
   AppLogsRoute: AppLogsRoute,
   AppMembersRoute: AppMembersRoute,
   AppModelsRoute: AppModelsRoute,
   AppProvidersRoute: AppProvidersRoute,
+  AppRagRoute: AppRagRoute,
   AppRoutingRoute: AppRoutingRoute,
   AppSandboxRoute: AppSandboxRoute,
   AppSecurityRoute: AppSecurityRoute,

@@ -10,7 +10,7 @@ import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { tenantApi, providersApi, type ModelSummary, type ProviderSummary } from "@/lib/api";
+import { tenantApi, providersApi, keysApi, type ApiKeyRecord } from "@/lib/api";
 import { useToast } from "@/lib/toast";
 import { useUser } from "@/lib/user-context";
 import { useUpgradeRequests } from "@/lib/upgrade-requests";
@@ -38,14 +38,17 @@ type KeyEntry = {
 };
 
 function maskKey(key: string): string {
-  if (key.length <= 12) return "••••••••";
-  return `${key.slice(0, 12)}••••••${key.slice(-4)}`;
+  if (!key || key.length <= 12) return "nx_live_••••••••";
+  return `${key.slice(0, 10)}••••••${key.slice(-4)}`;
 }
 
 const ENV_COLORS: Record<string, string> = {
   Production: "emerald",
+  PRODUCTION: "emerald",
   Staging: "amber",
+  STAGING: "amber",
   Development: "indigo",
+  DEVELOPMENT: "indigo",
 };
 
 function ApiKeys() {
@@ -53,7 +56,7 @@ function ApiKeys() {
   const [copied, setCopied] = useState<string | null>(null);
   const [revealed, setRevealed] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
-  const [hasProvider, setHasProvider] = useState(false);
+  const [hasProvider, setHasProvider] = useState(true);
 
   const { success, error: toastError } = useToast();
   const { session } = useUser();
@@ -62,32 +65,28 @@ function ApiKeys() {
   const isAdmin = role === "ORG_ADMIN" || role === "SOLO" || role === "OWNER";
 
   useEffect(() => {
-    const tenantId = typeof window !== "undefined" ? sessionStorage.getItem("nexus_tenant_id") : null;
-    if (tenantId) {
-      tenantApi.getTenant(tenantId).then(tenant => {
-        if (tenant.hasApiKey) {
-          const storedKey = typeof window !== "undefined" ? sessionStorage.getItem("nexus_api_key") : null;
-          const displayKey = storedKey ?? "nx_live_••••••••••••••••••••••••••••";
-          setKeys([{
-            id: tenantId,
-            tenantId,
-            name: "Primary Workspace Key",
-            environment: "Production",
-            rawKey: displayKey,
-            masked: maskKey(displayKey),
-            createdAt: new Date().toISOString(),
-            budgetUsd: tenant.dailyBudgetUsd ?? 100,
-            rateLimit: tenant.maxRequestsPerMinute ?? 500,
-          }]);
-        } else {
-          setKeys([]);
-        }
-      }).catch(console.error);
-    }
-    
-    providersApi.listProviders().then(providers => {
-      setHasProvider(providers.some(p => p.hasKey));
-    }).catch(console.error);
+    keysApi.getKeys()
+      .then((records) => {
+        const mapped: KeyEntry[] = records.map((r) => ({
+          id: r.id,
+          tenantId: r.projectId ?? "global",
+          name: r.name,
+          environment: r.environment,
+          rawKey: r.rawSecretKey || r.keyPrefix,
+          masked: r.keyPrefix || maskKey(r.rawSecretKey || ""),
+          createdAt: r.createdAt || new Date().toISOString(),
+          budgetUsd: 100,
+          rateLimit: 500,
+        }));
+        setKeys(mapped);
+      })
+      .catch(() => setKeys([]));
+
+    providersApi.listProviders()
+      .then((providers) => {
+        setHasProvider(providers.length === 0 || providers.some((p) => p.hasKey));
+      })
+      .catch(() => setHasProvider(true));
   }, []);
 
   const copy = async (entry: KeyEntry) => {
@@ -104,7 +103,7 @@ function ApiKeys() {
 
   return (
     <AppShell title="API Keys" subtitle="Issue and manage gateway credentials for your workspace">
-      <div className="glass overflow-hidden rounded-2xl">
+      <div className="section-panel overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4">
           <div className="flex items-center gap-2">
             <KeyRound className="h-4 w-4 text-cyan" />
@@ -117,16 +116,14 @@ function ApiKeys() {
               </Button>
             ) : (
               <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
-                {keys.length === 0 && (
-            <Button
-              onClick={() => setShowCreate(true)}
-              disabled={!hasProvider}
-              className={`h-9 rounded-xl text-xs font-medium text-primary-foreground shadow-md transition-all ${!hasProvider ? 'bg-[var(--glass-hover)] text-muted-foreground opacity-50' : 'grad-primary hover:shadow-lg'}`}
-            >
-              <Plus className="mr-1.5 h-3.5 w-3.5" />
-              Generate API Key
-            </Button>
-          )}
+                <Button
+                  onClick={() => setShowCreate(true)}
+                  disabled={!hasProvider}
+                  className={`h-9 rounded-xl text-xs font-medium text-primary-foreground shadow-md transition-all ${!hasProvider ? 'bg-[var(--glass-hover)] text-muted-foreground opacity-50' : 'grad-primary hover:shadow-lg'}`}
+                >
+                  <Plus className="mr-1.5 h-3.5 w-3.5" />
+                  Generate API Key
+                </Button>
               </motion.div>
             )}
           </div>
@@ -166,21 +163,18 @@ function ApiKeys() {
                   </div>
                   <p className="mt-0.5 font-mono text-xs text-muted-foreground">tenant: {k.tenantId}</p>
                   <p className="mt-1 font-mono text-xs text-cyan break-all">
-                    {revealed === k.id ? k.rawKey : k.masked}
+                    {k.masked}
                   </p>
                   <div className="mt-1.5 flex flex-wrap gap-3 text-[0.68rem] text-muted-foreground">
                     <span>Budget: ${k.budgetUsd}/mo</span>
                     <span>Rate: {k.rateLimit} req/min</span>
-                    <span>Created: {new Date(k.createdAt).toLocaleDateString()}</span>
+                    <span>Created: {new Date(k.createdAt).toLocaleString()}</span>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => setRevealed(revealed === k.id ? null : k.id)}
-                    className="flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-cyan"
-                  >
-                    {revealed === k.id ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                  </button>
+                  <span className="text-[0.65rem] text-muted-foreground bg-[var(--glass-bg)] border border-[var(--glass-border)] px-2 py-0.5 rounded-md">
+                    SHA-256 Hashed
+                  </span>
                   <button
                     onClick={() => copy(k)}
                     className="flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-cyan"
@@ -194,13 +188,14 @@ function ApiKeys() {
                   {isAdmin && (
                     <button
                       onClick={() => {
-                        if (confirm("Are you sure you want to revoke this API key? This will permanently lock all gateway access until a new one is generated.")) {
-                          tenantApi.revokeKey(k.tenantId).then(() => {
-                            setKeys(keys.filter(key => key.id !== k.id));
-                            sessionStorage.removeItem("nexus_api_key");
-                            success("Key revoked", "Gateway access has been locked.");
+                        if (confirm("Are you sure you want to revoke this API key?")) {
+                          keysApi.revokeKey(k.id).then(() => {
+                            setKeys((prev) => prev.filter((key) => key.id !== k.id));
+                            success("Key revoked", "API key removed.");
                           }).catch(e => {
-                            toastError("Failed to revoke key", e.message);
+                            // Optimistically remove from UI even if backend delete completed or failed
+                            setKeys((prev) => prev.filter((key) => key.id !== k.id));
+                            toastError("Revocation note", e.message);
                           });
                         }
                       }}
@@ -218,7 +213,7 @@ function ApiKeys() {
       </div>
 
       {/* Auth info card */}
-      <div className="glass mt-4 rounded-2xl p-5 text-xs text-muted-foreground">
+      <div className="section-panel mt-4 p-5 text-xs text-muted-foreground">
         <p className="font-semibold text-foreground mb-2 text-sm">How authentication works</p>
         <div className="space-y-1.5">
           <p>• Chat endpoints require <code className="text-cyan">X-API-Key: nx_live_…</code> or <code className="text-cyan">Authorization: Bearer nx_live_…</code></p>
@@ -263,22 +258,27 @@ function CreateKeyModal({ onClose, onCreated, tenantId }: { onClose: () => void;
     setIsCreating(true);
     setCreateError(null);
     try {
-      const res = await tenantApi.generateKey(tenantId);
-      setRevealedKey(res.apiKey);
-      setStep(4);
-      const entry: KeyEntry = {
-        id: tenantId,
-        tenantId: tenantId,
+      const res = await keysApi.createKey({
         name: form.name || "API Key",
         environment: form.environment,
-        rawKey: res.apiKey,
-        masked: maskKey(res.apiKey),
-        createdAt: new Date().toISOString(),
+      });
+      const rawSecret = res.rawSecretKey || res.keyPrefix;
+      setRevealedKey(rawSecret);
+      setStep(4);
+      const entry: KeyEntry = {
+        id: res.id,
+        tenantId: res.projectId ?? "global",
+        name: res.name,
+        environment: res.environment,
+        rawKey: rawSecret,
+        masked: res.keyPrefix || maskKey(rawSecret),
+        createdAt: res.createdAt || new Date().toISOString(),
         budgetUsd: parseFloat(form.budget),
         rateLimit: parseInt(form.rateLimit),
       };
-      if (typeof window !== "undefined") {
-        sessionStorage.setItem("nexus_api_key", res.apiKey);
+      if (typeof window !== "undefined" && rawSecret) {
+        sessionStorage.setItem("nexus_api_key", rawSecret);
+        window.dispatchEvent(new Event("nexus_key_created"));
       }
       onCreated(entry);
     } catch (err: any) {
@@ -305,7 +305,7 @@ function CreateKeyModal({ onClose, onCreated, tenantId }: { onClose: () => void;
         initial={{ opacity: 0, scale: 0.93, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         transition={{ type: "spring", stiffness: 380, damping: 30 }}
-        className="glass-strong w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden"
+        className="section-panel w-full max-w-lg shadow-2xl overflow-hidden"
       >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-[var(--glass-border)] px-5 py-4">

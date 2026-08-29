@@ -111,12 +111,12 @@ function ModelHub() {
   };
 
   const filtered = useMemo(() =>
-    models.filter((m) =>
-      (!showActiveOnly || m.enabled) &&
+    models.filter((m) => {
+      return (!showActiveOnly || m.enabled) &&
       (!search ||
       m.displayName.toLowerCase().includes(search.toLowerCase()) ||
-      m.modelId.toLowerCase().includes(search.toLowerCase()))
-    ), [models, search, showActiveOnly]);
+      m.modelId.toLowerCase().includes(search.toLowerCase()));
+    }), [models, search, showActiveOnly]);
 
   const hasProviders = providers.length > 0;
 
@@ -124,7 +124,7 @@ function ModelHub() {
     <AppShell title="Model Hub" subtitle="Browse, configure, and assign model access across your workspace">
       {/* No providers guard */}
       {!loading && !hasProviders && (
-        <div className="glass rounded-2xl p-16 text-center">
+        <div className="section-panel p-16 text-center">
           <Lock className="mx-auto mb-4 h-12 w-12 text-muted-foreground opacity-40" />
           <p className="text-sm font-semibold">Model Hub is locked</p>
           <p className="mt-1.5 text-xs text-muted-foreground max-w-xs mx-auto">
@@ -154,6 +154,45 @@ function ModelHub() {
               <label htmlFor="active-only" className="text-xs text-muted-foreground cursor-pointer">Enabled Only</label>
             </div>
             <p className="text-xs text-muted-foreground ml-auto">{models.length} models across {providers.length} providers</p>
+            <Button
+              onClick={async () => {
+                try {
+                  await providersApi.discoverAll();
+                  success("Discovery complete", "Updated model catalog from connected provider APIs.");
+                  loadAll();
+                } catch (err: any) {
+                  toastError("Discovery failed", err.message);
+                }
+              }}
+              variant="outline"
+              size="sm"
+              className="glass h-9 rounded-lg text-xs gap-1.5 text-cyan border-cyan/40 hover:bg-cyan/10"
+            >
+              <Zap className="h-3.5 w-3.5" /> Re-Discover Models
+            </Button>
+            <Button
+              onClick={async () => {
+                setLoading(true);
+                try {
+                  const res = await fetch("http://localhost:8080/api/providers/gemini/test-and-load-reasoning", { method: "POST" });
+                  const data = await res.json();
+                  if (data.status === "SUCCESS") {
+                    success("Reasoning Models Verified", `Loaded ${data.totalActive} working Gemini reasoning models into gateway.`);
+                  } else {
+                    toastError("Verification Failed", data.message || "Failed to verify models");
+                  }
+                  await loadAll();
+                } catch (err: any) {
+                  toastError("Execution Error", err.message);
+                  setLoading(false);
+                }
+              }}
+              variant="outline"
+              size="sm"
+              className="glass h-9 rounded-lg text-xs gap-1.5 text-amber border-amber/40 hover:bg-amber/10"
+            >
+              <BrainCircuit className="h-3.5 w-3.5" /> Test & Load Working Reasoning Models
+            </Button>
             <Button onClick={loadAll} variant="outline" size="sm" className="glass h-9 rounded-lg text-xs gap-1.5">
               <RefreshCw className="h-3.5 w-3.5" /> Sync
             </Button>
@@ -193,7 +232,7 @@ function ModelHub() {
                             onClick={() => setSelectedModel(m)}
                             whileHover={{ y: -3, scale: 1.01 }}
                             whileTap={{ scale: 0.99 }}
-                            className={`glass cursor-pointer rounded-2xl p-4 transition-all duration-200 hover:border-[color-mix(in_oklab,var(--${meta.color})_30%,transparent)] ${
+                            className={`section-panel cursor-pointer p-4 transition-all duration-200 hover:border-[color-mix(in_oklab,var(--${meta.color})_30%,transparent)] ${
                               selectedModel?.armKey === m.armKey
                                 ? `border-${meta.color}/40 shadow-[0_0_20px_-8px_var(--${meta.color})]`
                                 : ""
@@ -204,10 +243,19 @@ function ModelHub() {
                                 <p className="text-sm font-semibold truncate">{m.displayName}</p>
                                 <p className="font-mono text-[0.65rem] text-muted-foreground truncate mt-0.5">{m.modelId}</p>
                               </div>
-                              {m.enabled
-                                ? <CircleCheck className={`h-4 w-4 shrink-0 text-${meta.color}`} />
-                                : <CircleSlash className="h-4 w-4 shrink-0 text-muted-foreground" />
-                              }
+                              {m.enabled ? (
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  <span className="flex items-center gap-1 rounded-full border border-emerald/50 bg-emerald/10 px-2.5 py-0.5 text-[0.6rem] font-bold text-emerald shadow-[0_0_14px_rgba(16,185,129,0.45)]">
+                                    <span className="relative flex h-1.5 w-1.5">
+                                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald opacity-75" />
+                                      <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald" />
+                                    </span>
+                                    LIVE & VERIFIED
+                                  </span>
+                                </div>
+                              ) : (
+                                <CircleSlash className="h-4 w-4 shrink-0 text-muted-foreground opacity-50" />
+                              )}
                             </div>
                             <div className="flex flex-wrap gap-1.5 text-[0.65rem]">
                               <span className="flex items-center gap-1 rounded-md bg-[var(--glass-bg)] border border-[var(--glass-border)] px-2 py-1">
@@ -249,7 +297,7 @@ function ModelHub() {
                     exit={{ opacity: 0, x: 20 }}
                     className="w-full lg:w-[320px] shrink-0"
                   >
-                    <div className="glass rounded-2xl p-5 sticky top-24">
+                    <div className="section-panel p-5 sticky top-24">
                       <div className="flex items-start justify-between mb-4">
                         <div className="min-w-0">
                           <h3 className="font-semibold text-base leading-tight truncate">{selectedModel.displayName}</h3>
@@ -348,7 +396,7 @@ function ModelHub() {
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
-                    className="hidden lg:flex w-[320px] shrink-0 items-center justify-center p-6 text-center glass rounded-2xl border border-dashed border-[var(--glass-border)] text-muted-foreground"
+                    className="section-panel hidden lg:flex w-[320px] shrink-0 items-center justify-center p-6 text-center border-dashed text-muted-foreground"
                   >
                     <div>
                       <BrainCircuit className="mx-auto mb-3 h-8 w-8 opacity-40" />

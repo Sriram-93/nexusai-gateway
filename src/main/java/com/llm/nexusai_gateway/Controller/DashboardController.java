@@ -189,6 +189,9 @@ public class DashboardController {
                 } else {
                     logs = logRepository.findTop50ByTenantIdOrderByIdDesc(tenantId);
                 }
+                if (logs == null || logs.isEmpty()) {
+                    logs = logRepository.findTop50ByOrderByIdDesc();
+                }
             }
             return logs.stream().map(log -> {
                 Map<String, Object> row = new LinkedHashMap<>();
@@ -390,6 +393,70 @@ public class DashboardController {
         response.put("activeStrategy",  activated);
         response.put("activeEngine",    routingEngineManager.getActiveEngineClass());
         return ResponseEntity.ok(response);
+    }
+
+    /**
+     * PATCH /api/dashboard/settings/bandit
+     * Tune the LinUCB exploration parameter (alpha).
+     */
+    @PatchMapping("/settings/bandit")
+    public ResponseEntity<?> updateBanditHyperparameters(@RequestBody Map<String, Object> body) {
+        if (!body.containsKey("alpha")) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Missing required field 'alpha'"));
+        }
+        try {
+            double alpha = Double.parseDouble(String.valueOf(body.get("alpha")));
+            if (alpha < 0.0 || alpha > 5.0) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Alpha must be between 0.0 and 5.0"));
+            }
+            boolean updated = routingEngineManager.updateBanditAlpha(alpha);
+            return ResponseEntity.ok(Map.of(
+                "updated", updated,
+                "alpha", alpha,
+                "activeEngine", routingEngineManager.getActiveEngineClass(),
+                "message", updated ? "Bandit exploration alpha updated." : "Active engine is not LinUCB. Switch strategy to ADAPTIVE first."
+            ));
+        } catch (NumberFormatException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Invalid numeric value for alpha"));
+        }
+    }
+
+    /**
+     * POST /api/dashboard/circuit-breaker/{provider}/trip
+     * Manually trip a provider circuit breaker to OPEN state.
+     */
+    @PostMapping("/circuit-breaker/{provider}/trip")
+    public ResponseEntity<?> tripCircuitBreaker(@PathVariable String provider) {
+        try {
+            CircuitBreaker cb = circuitBreakerRegistry.circuitBreaker(provider);
+            cb.transitionToOpenState();
+            return ResponseEntity.ok(Map.of(
+                "provider", provider,
+                "cbState", cb.getState().name(),
+                "message", "Circuit breaker manually tripped to OPEN."
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
+     * POST /api/dashboard/circuit-breaker/{provider}/reset
+     * Manually reset a provider circuit breaker back to CLOSED state.
+     */
+    @PostMapping("/circuit-breaker/{provider}/reset")
+    public ResponseEntity<?> resetCircuitBreaker(@PathVariable String provider) {
+        try {
+            CircuitBreaker cb = circuitBreakerRegistry.circuitBreaker(provider);
+            cb.transitionToClosedState();
+            return ResponseEntity.ok(Map.of(
+                "provider", provider,
+                "cbState", cb.getState().name(),
+                "message", "Circuit breaker manually reset to CLOSED."
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
     }
 
     private io.jsonwebtoken.Claims extractClaims(String authHeader) {

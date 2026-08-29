@@ -20,13 +20,16 @@ import java.util.stream.Collectors;
 public class TenantController {
 
     private final TenantRegistry tenantRegistry;
+    private final com.llm.nexusai_gateway.Security.ApiKeyRepository apiKeyRepository;
 
-    public TenantController(TenantRegistry tenantRegistry) {
+    public TenantController(TenantRegistry tenantRegistry, com.llm.nexusai_gateway.Security.ApiKeyRepository apiKeyRepository) {
         this.tenantRegistry = tenantRegistry;
+        this.apiKeyRepository = apiKeyRepository;
     }
 
     @GetMapping
     public Mono<List<Map<String, Object>>> getAllTenants() {
+        boolean globalHasKeys = apiKeyRepository.count() > 0;
         List<Map<String, Object>> result = tenantRegistry.getAll().stream()
             .map(t -> {
                 Map<String, Object> m = new LinkedHashMap<>();
@@ -40,7 +43,7 @@ public class TenantController {
                 m.put("maxRequestsPerMinute", t.getMaxRequestsPerMinute());
                 m.put("piiEnforcement",      t.isPiiEnforcementEnabled());
                 m.put("jailbreakEnforcement", t.isJailbreakEnforcementEnabled());
-                m.put("hasApiKey",           t.getApiKey() != null && !t.getApiKey().isBlank());
+                m.put("hasApiKey",           globalHasKeys || (t.getApiKey() != null && !t.getApiKey().isBlank()));
                 return m;
             })
             .collect(Collectors.toList());
@@ -50,6 +53,7 @@ public class TenantController {
 
     @GetMapping("/{tenantId}")
     public Mono<Map<String, Object>> getTenant(@PathVariable String tenantId) {
+        boolean globalHasKeys = apiKeyRepository.count() > 0;
         return tenantRegistry.get(tenantId)
             .map(t -> {
                 Map<String, Object> m = new LinkedHashMap<>();
@@ -61,7 +65,7 @@ public class TenantController {
                 m.put("allowedModels",       t.getAllowedModels());
                 m.put("piiEnforcement",      t.isPiiEnforcementEnabled());
                 m.put("jailbreakEnforcement", t.isJailbreakEnforcementEnabled());
-                m.put("hasApiKey",           t.getApiKey() != null && !t.getApiKey().isBlank());
+                m.put("hasApiKey",           globalHasKeys || (t.getApiKey() != null && !t.getApiKey().isBlank()));
                 return (Map<String, Object>) m;
             })
             .map(Mono::just)

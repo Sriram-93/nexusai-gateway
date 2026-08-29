@@ -70,6 +70,9 @@ public class RateLimitingService {
           .then(applyTokenBucket("provider:" + targetProvider.toLowerCase(), providerLimit))
           .onErrorResume(RateLimitException.class, Mono::error)
           .onErrorResume(e -> {
+              if (e instanceof RateLimitException) {
+                  return Mono.error(e);
+              }
               org.slf4j.LoggerFactory.getLogger(RateLimitingService.class)
                   .warn("Redis connection failed in RateLimitingService; bypassing rate limiting: {}", e.getMessage());
               return Mono.empty();

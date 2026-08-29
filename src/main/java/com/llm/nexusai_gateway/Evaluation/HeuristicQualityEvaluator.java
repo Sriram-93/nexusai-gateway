@@ -24,7 +24,6 @@ import reactor.core.publisher.Mono;
  * - Format Compliance: structural validation per task category
  */
 @Service
-@org.springframework.context.annotation.Primary
 public class HeuristicQualityEvaluator implements QualityEvaluator {
 
     private static final Logger log = LoggerFactory.getLogger(HeuristicQualityEvaluator.class);

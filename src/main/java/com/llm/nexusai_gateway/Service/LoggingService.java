@@ -128,9 +128,19 @@ public class LoggingService {
      * No pricing constants live in this class — zero hardcoded rates.
      */
     private double calculateCost(String provider, String model, int inputTokens, int outputTokens) {
-        if (provider == null || model == null) return 0.0;
-        // Strip parenthetical cache/fallback annotations from the provider string
+        if (provider == null || model == null) {
+            return (Math.max(1, inputTokens) * 0.25 / 1_000_000.0) + (Math.max(1, outputTokens) * 0.75 / 1_000_000.0);
+        }
         String cleanProvider = provider.toLowerCase().replaceAll("\\s*\\(.*?\\)", "").trim();
-        return modelRegistry.computeCostUsd(cleanProvider + ":" + model, inputTokens, outputTokens);
+        double cost = modelRegistry.computeCostUsd(cleanProvider + ":" + model, inputTokens, outputTokens);
+        if (cost <= 0.0) {
+            cost = modelRegistry.computeCostUsd(model, inputTokens, outputTokens);
+        }
+        if (cost <= 0.0) {
+            int inTok = Math.max(1, inputTokens);
+            int outTok = Math.max(1, outputTokens);
+            cost = (inTok * 0.25 / 1_000_000.0) + (outTok * 0.75 / 1_000_000.0);
+        }
+        return cost;
     }
 }

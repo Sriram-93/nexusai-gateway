@@ -39,7 +39,16 @@ public class LinUcbDecisionEngine implements DecisionEngine {
     private static final Logger log = LoggerFactory.getLogger(LinUcbDecisionEngine.class);
 
     /** Exploration parameter — controls exploration vs exploitation tradeoff */
-    private final double alpha;
+    private volatile double alpha;
+
+    public double getAlpha() {
+        return this.alpha;
+    }
+
+    public void setAlpha(double alpha) {
+        this.alpha = alpha;
+        log.info("LinUCB exploration alpha parameter updated to {}", alpha);
+    }
 
     /** Feature dimension (from RequestContext.FEATURE_DIMENSION) */
     private final int dimension;

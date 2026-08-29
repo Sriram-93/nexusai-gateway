@@ -21,6 +21,8 @@ public interface RegisteredModelRepository extends JpaRepository<RegisteredModel
 
     Optional<RegisteredModel> findByProviderSlugAndModelId(String providerSlug, String modelId);
 
+    List<RegisteredModel> findAllByProviderSlugAndModelId(String providerSlug, String modelId);
+
     boolean existsByArmKey(String armKey);
 
     /** Returns all enabled arms sorted by inputPricePer1M ascending (cheapest first). */

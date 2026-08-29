@@ -47,12 +47,31 @@ public class ProviderBootstrapService implements ApplicationRunner {
         
         // Migrate existing tenants to have their own providers
         try {
-            java.util.List<String> tenantIds = jdbcTemplate.queryForList("SELECT tenant_id FROM tenant_registry", String.class);
+            java.util.List<String> tenantIds = jdbcTemplate.queryForList("SELECT tenant_id FROM tenant_configs", String.class);
             for (String tid : tenantIds) {
                 seedProvidersForTenant(tid);
             }
         } catch(Exception e) {
             log.warn("Could not migrate tenants: {}", e.getMessage());
+        }
+
+        try {
+            // Ensure providers with 0 active working models and no user-supplied key have blank credentials
+            for (ProviderConfig pc : providerConfigRepository.findAll()) {
+                if (!"gemini".equalsIgnoreCase(pc.getSlug()) && !"groq".equalsIgnoreCase(pc.getSlug())) {
+                    Integer activeCount = jdbcTemplate.queryForObject(
+                        "SELECT COUNT(*) FROM registered_models WHERE provider_slug = ? AND enabled = true",
+                        Integer.class,
+                        pc.getSlug()
+                    );
+                    if (activeCount == null || activeCount == 0) {
+                        pc.setApiKey(null);
+                        providerConfigRepository.save(pc);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Could not sanitize provider keys: {}", e.getMessage());
         }
 
         int seeded = modelRegistry.seedFromConfig();

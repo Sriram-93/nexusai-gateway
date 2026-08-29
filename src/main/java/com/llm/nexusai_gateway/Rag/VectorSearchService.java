@@ -21,4 +21,14 @@ public interface VectorSearchService {
      * Add a document chunk to the vector store index.
      */
     void indexDocument(String documentName, String content, Map<String, String> metadata);
+
+    /**
+     * Get all document chunks currently stored in the index.
+     */
+    List<KnowledgeChunk> getAllChunks();
+
+    /**
+     * Delete a document chunk by ID.
+     */
+    boolean deleteChunk(String id);
 }

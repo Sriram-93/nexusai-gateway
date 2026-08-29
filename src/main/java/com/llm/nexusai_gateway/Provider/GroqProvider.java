@@ -74,7 +74,7 @@ public class GroqProvider implements LlmProvider {
                                 org.springframework.web.reactive.function.client.WebClientResponseException ex = (org.springframework.web.reactive.function.client.WebClientResponseException) e;
                                 return ex.getStatusCode().is5xxServerError() || ex.getStatusCode().value() == 429;
                             }
-                            return true; // Retry on IOExceptions, connection resets, etc.
+                            return false;
                         })
                 )
                 .map(response -> {
@@ -95,12 +95,12 @@ public class GroqProvider implements LlmProvider {
                     }
                 })
                 .onErrorResume(e -> {
-                    log.error("[GROQ ERROR] Call to model {} failed: {}", modelName, e.getMessage());
                     if (mockEnabled) {
-                        log.warn("Groq real call failed (API key may be invalid or unpaid). Falling back to mock. Error: {}", e.getMessage());
+                        log.warn("Groq call to {} failed ({}), falling back to mock response.", modelName, e.getMessage());
                         String text = "[MOCK Groq " + modelName + "] Here is a simulated response to: \"" + message + "\"";
                         return Mono.just(new ProviderResponse(text, estimateTokens(message), estimateTokens(text)));
                     }
+                    log.error("[GROQ ERROR] Call to model {} failed: {}", modelName, e.getMessage());
                     return Mono.error(e);
                 });
     }

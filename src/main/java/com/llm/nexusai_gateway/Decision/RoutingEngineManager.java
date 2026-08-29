@@ -127,4 +127,21 @@ public class RoutingEngineManager implements DecisionEngine {
     public String getActiveEngineClass() {
         return activeEngine.get().getClass().getSimpleName();
     }
+
+    public double getBanditAlpha() {
+        DecisionEngine current = activeEngine.get();
+        if (current instanceof LinUcbDecisionEngine ucb) {
+            return ucb.getAlpha();
+        }
+        return this.linucbAlpha;
+    }
+
+    public boolean updateBanditAlpha(double newAlpha) {
+        DecisionEngine current = activeEngine.get();
+        if (current instanceof LinUcbDecisionEngine ucb) {
+            ucb.setAlpha(newAlpha);
+            return true;
+        }
+        return false;
+    }
 }

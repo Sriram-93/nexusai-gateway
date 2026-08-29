@@ -170,7 +170,7 @@ public class ModelPricingService {
                 applyEntryToModel(newModel, data);
                 modelRepository.save(newModel);
                 discoveredCount++;
-                log.info("LiteLLM Passive Discovery: Found new model {}", armKey);
+                log.debug("LiteLLM Passive Discovery: Found new model {}", armKey);
             }
         }
 

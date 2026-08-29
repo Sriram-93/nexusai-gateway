@@ -77,6 +77,20 @@ public class RegisteredModel {
     /** ISO timestamp of when pricing was last updated. */
     private Instant pricingUpdatedAt;
 
+    // ─── Health Monitoring Fields ───────────────────────────────────────────
+    /** Health status: HEALTHY, DEGRADED, UNREACHABLE, UNKNOWN */
+    @Column(name = "health_status", nullable = true)
+    private String healthStatus = "UNKNOWN";
+
+    @Column(name = "last_health_check")
+    private Instant lastHealthCheck;
+
+    @Column(name = "last_health_error")
+    private String lastHealthError;
+
+    @Column(name = "last_health_latency_ms")
+    private Long lastHealthLatencyMs;
+
     // ─── Business methods ─────────────────────────────────────────────────────
 
     /**
@@ -130,4 +144,13 @@ public class RegisteredModel {
     public Instant getDiscoveredAt() { return discoveredAt; }
     public Instant getPricingUpdatedAt() { return pricingUpdatedAt; }
     public void setPricingUpdatedAt(Instant pricingUpdatedAt) { this.pricingUpdatedAt = pricingUpdatedAt; }
+
+    public String getHealthStatus() { return healthStatus; }
+    public void setHealthStatus(String healthStatus) { this.healthStatus = healthStatus; }
+    public Instant getLastHealthCheck() { return lastHealthCheck; }
+    public void setLastHealthCheck(Instant lastHealthCheck) { this.lastHealthCheck = lastHealthCheck; }
+    public String getLastHealthError() { return lastHealthError; }
+    public void setLastHealthError(String lastHealthError) { this.lastHealthError = lastHealthError; }
+    public Long getLastHealthLatencyMs() { return lastHealthLatencyMs; }
+    public void setLastHealthLatencyMs(Long lastHealthLatencyMs) { this.lastHealthLatencyMs = lastHealthLatencyMs; }
 }

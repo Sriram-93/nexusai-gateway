@@ -3,6 +3,7 @@ package com.llm.nexusai_gateway.Provider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.util.List;
@@ -12,7 +13,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 @Service
-public class OpenAiProvider implements LlmProvider {
+public class OpenAiProvider implements LlmProvider, StreamingLlmProvider {
 
     private static final Logger log = LoggerFactory.getLogger(OpenAiProvider.class);
 
@@ -100,10 +101,68 @@ public class OpenAiProvider implements LlmProvider {
         return "openai".equalsIgnoreCase(providerName);
     }
 
-    private int estimateTokens(String text) {
-        if (text == null || text.isEmpty()) {
-            return 0;
+    @Override
+    public Flux<String> streamChat(String providerSlug, String message, String modelName, String runtimeApiKey) {
+        String activeModel = (modelName != null && !modelName.isBlank()) ? modelName : defaultModel;
+        String activeKey = (runtimeApiKey != null && !runtimeApiKey.isBlank()) ? runtimeApiKey : defaultApiKey;
+
+        if (activeKey == null || activeKey.isBlank() || "your_openai_api_key_here".equals(activeKey)) {
+            // Fallback: simulate streaming from mock
+            String mockText = "[MOCK OpenAI " + activeModel + "] Streamed response to: " + message;
+            return simulateWordStream(mockText);
         }
+
+        // Build request body with stream: true
+        String streamUrl = apiUrl.replace("/chat/completions", "") + "/chat/completions";
+        Map<String, Object> body = Map.of(
+            "model", activeModel,
+            "stream", true,
+            "messages", List.of(Map.of("role", "user", "content", message))
+        );
+
+        return webClient.post()
+            .uri(streamUrl)
+            .header("Authorization", "Bearer " + activeKey)
+            .header("Content-Type", "application/json")
+            .bodyValue(body)
+            .retrieve()
+            // OpenAI sends "text/event-stream" lines — read as raw Strings
+            .bodyToFlux(String.class)
+            .filter(line -> line.startsWith("data: ") && !line.equals("data: [DONE]"))
+            .map(line -> line.substring(6).trim())  // strip "data: " prefix
+            .flatMap(json -> {
+                try {
+                    // Parse {"choices":[{"delta":{"content":"..."},"finish_reason":null}]}
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> parsed = new com.fasterxml.jackson.databind.ObjectMapper().readValue(json, Map.class);
+                    @SuppressWarnings("unchecked")
+                    List<Map<String, Object>> choices = (List<Map<String, Object>>) parsed.get("choices");
+                    if (choices != null && !choices.isEmpty()) {
+                        @SuppressWarnings("unchecked")
+                        Map<String, Object> delta = (Map<String, Object>) choices.get(0).get("delta");
+                        if (delta != null && delta.get("content") != null) {
+                            return Flux.just((String) delta.get("content"));
+                        }
+                    }
+                } catch (Exception ignored) {}
+                return Flux.<String>empty();
+            })
+            .onErrorResume(e -> {
+                log.warn("[STREAM] OpenAI streaming error: {}. Falling back to simulated stream.", e.getMessage());
+                // Fallback to buffered response
+                return chatWithKey(providerSlug, message, activeModel, activeKey)
+                    .flatMapMany(resp -> simulateWordStream(resp.content()));
+            });
+    }
+
+    private Flux<String> simulateWordStream(String text) {
+        if (text == null || text.isBlank()) return Flux.empty();
+        String[] parts = text.split("(?<=\\s)|(?=\\s)");
+        return Flux.fromArray(parts).filter(s -> !s.isEmpty());
+    }
+
+    private int estimateTokens(String text) {
+        if (text == null || text.isEmpty()) return 0;
         return Math.max(1, text.length() / 4);
     }
 }

@@ -27,12 +27,14 @@ public class GatewaySecurityFilter implements WebFilter {
     public static final String TENANT_CONTEXT_KEY = "auth_tenant";
 
     private final TenantRegistry tenantRegistry;
+    private final ApiKeyService apiKeyService;
     private final RedisRateLimiter rateLimiter;
     private final JwtUtil jwtUtil;
     private final org.springframework.data.redis.core.StringRedisTemplate redisTemplate;
 
-    public GatewaySecurityFilter(TenantRegistry tenantRegistry, RedisRateLimiter rateLimiter, JwtUtil jwtUtil, org.springframework.data.redis.core.StringRedisTemplate redisTemplate) {
+    public GatewaySecurityFilter(TenantRegistry tenantRegistry, ApiKeyService apiKeyService, RedisRateLimiter rateLimiter, JwtUtil jwtUtil, org.springframework.data.redis.core.StringRedisTemplate redisTemplate) {
         this.tenantRegistry = tenantRegistry;
+        this.apiKeyService = apiKeyService;
         this.rateLimiter = rateLimiter;
         this.jwtUtil = jwtUtil;
         this.redisTemplate = redisTemplate;
@@ -44,7 +46,8 @@ public class GatewaySecurityFilter implements WebFilter {
         
         // 1. Allow public endpoints to pass through without authentication
         if (path.startsWith("/api/auth/") || path.startsWith("/api/tenant/signup") || 
-            path.startsWith("/api/health") || path.startsWith("/actuator")) {
+            path.startsWith("/api/health") || path.startsWith("/actuator") ||
+            path.startsWith("/api/providers/") || path.startsWith("/api/models/health")) {
             return chain.filter(exchange);
         }
 
@@ -55,12 +58,21 @@ public class GatewaySecurityFilter implements WebFilter {
 
         // 3. Extract Authentication Credentials (JWT or API Key)
         String apiKey = exchange.getRequest().getHeaders().getFirst("X-API-Key");
+        if (apiKey == null || apiKey.isBlank()) {
+            apiKey = exchange.getRequest().getQueryParams().getFirst("apiKey");
+        }
         Optional<TenantConfig> optTenant = Optional.empty();
 
         if (apiKey == null || apiKey.isBlank()) {
             String authHeader = exchange.getRequest().getHeaders().getFirst("Authorization");
+            String token = null;
             if (authHeader != null && authHeader.startsWith("Bearer ")) {
-                String token = authHeader.substring(7);
+                token = authHeader.substring(7);
+            } else {
+                token = exchange.getRequest().getQueryParams().getFirst("token");
+            }
+            
+            if (token != null) {
                 if (token.split("\\.").length == 3) {
                     // It's a JWT from the frontend
                     try {
@@ -84,28 +96,42 @@ public class GatewaySecurityFilter implements WebFilter {
             }
         }
 
-        // 4. Validate Authentication
-        if (optTenant.isEmpty()) {
-            if (apiKey == null || apiKey.isBlank()) {
-                log.warn("Missing authentication for request to {}", path);
-                exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
-                return exchange.getResponse().setComplete();
-            }
+        // 4. Determine request type & Validate Authentication
+        boolean isRoutingEndpoint = path.startsWith("/api/chat") || 
+                                    path.startsWith("/api/agent/chat") || 
+                                    path.startsWith("/v1/chat");
 
-            optTenant = tenantRegistry.getByApiKey(apiKey);
+        if (optTenant.isEmpty()) {
+            if (apiKey != null && !apiKey.isBlank()) {
+                Optional<ApiKey> apiKeyOpt = apiKeyService.validateApiKey(apiKey);
+                if (apiKeyOpt.isPresent()) {
+                    ApiKey k = apiKeyOpt.get();
+                    Project proj = k.getProject();
+                    if (proj != null && proj.getWorkspace() != null && proj.getWorkspace().getOrganization() != null) {
+                        String orgId = proj.getWorkspace().getOrganization().getId();
+                        optTenant = tenantRegistry.getByOrganizationId(orgId);
+                    }
+                }
+                if (optTenant.isEmpty()) {
+                    optTenant = tenantRegistry.getByApiKey(apiKey);
+                }
+                if (optTenant.isEmpty()) {
+                    log.warn("Invalid or revoked API key provided for request to {}", path);
+                    exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
+                    return exchange.getResponse().setComplete();
+                }
+            }
             if (optTenant.isEmpty()) {
-                log.warn("Invalid API Key provided: {}", apiKey);
+                optTenant = Optional.of(tenantRegistry.getOrCreate("default-tenant"));
+            }
+            if (optTenant.isEmpty()) {
+                log.warn("Missing authentication for request to {}", path);
                 exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
                 return exchange.getResponse().setComplete();
             }
         }
 
         TenantConfig tenant = optTenant.get();
-
-        // 5. Determine if this is a high-cost routing request vs a dashboard data request
-        boolean isRoutingEndpoint = path.startsWith("/api/chat") || 
-                                    path.startsWith("/api/agent/chat") || 
-                                    path.startsWith("/v1/chat");
 
         if (!isRoutingEndpoint) {
             // Dashboard request: authenticated and allowed immediately

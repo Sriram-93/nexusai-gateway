@@ -108,6 +108,27 @@ public class TenantRegistry {
         return tenantConfigRepository.findAll();
     }
 
+    public TenantConfig getOrCreate(String tenantId) {
+        if (tenantId == null || tenantId.isBlank()) tenantId = "default-tenant";
+        String finalTenantId = tenantId;
+        return tenantConfigRepository.findById(tenantId).orElseGet(() -> {
+            TenantConfig cfg = new TenantConfig(
+                finalTenantId,
+                "Default Workspace",
+                "org-default",
+                100.00,
+                List.of(),
+                List.of(),
+                List.of(),
+                500,
+                true,
+                true,
+                new double[]{0.25, 0.25, 0.25, 0.25}
+            );
+            return tenantConfigRepository.save(cfg);
+        });
+    }
+
     public void remove(String tenantId) {
         tenantConfigRepository.deleteById(tenantId);
     }

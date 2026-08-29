@@ -16,7 +16,9 @@ public class Organization {
     @Column(nullable = false)
     private String type; // "SOLO" or "ADMINISTRATION"
 
-    public Organization() {}
+    public Organization() {
+        this.id = UUID.randomUUID().toString();
+    }
 
     public Organization(String name, String type) {
         this.id = UUID.randomUUID().toString();

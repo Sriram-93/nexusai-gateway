@@ -1,6 +1,6 @@
 package com.llm.nexusai_gateway.Security;
 
-import org.springframework.data.repository.CrudRepository;
+import org.springframework.data.jpa.repository.JpaRepository;
 
-public interface OrganizationRepository extends CrudRepository<Organization, String> {
+public interface OrganizationRepository extends JpaRepository<Organization, String> {
 }

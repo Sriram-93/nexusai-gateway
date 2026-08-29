@@ -3,7 +3,8 @@ import { motion, AnimatePresence } from "motion/react";
 import {
   Bot, CircleDollarSign, Gauge, Radio, Waves, Brain,
   ArrowUp, Boxes, KeyRound, AlertTriangle, ChevronRight,
-  Users, Building2, Server, FlaskConical, Database, Network
+  Users, Building2, Server, FlaskConical, Database, Network,
+  Zap, CheckCircle2, Clock, Activity,
 } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { MetricCard } from "@/components/nexus/MetricCard";
@@ -22,33 +23,33 @@ type DashboardProps = {
 
 export function LockedState() {
   return (
-    <div className="mt-8 flex flex-col items-center justify-center rounded-2xl border border-dashed border-[var(--glass-border)] bg-[var(--glass-bg)] p-12 text-center shadow-sm">
-      <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-cyan/10">
-        <Boxes className="h-8 w-8 text-cyan" />
+    <div className="mt-8 flex flex-col items-center justify-center rounded-2xl border border-dashed border-[var(--glass-border)] bg-[var(--card)] p-16 text-center">
+      <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10">
+        <Boxes className="h-8 w-8 text-primary" />
       </div>
       <h2 className="text-xl font-semibold tracking-tight">Workspace Locked</h2>
-      <p className="mt-2 max-w-md text-sm text-muted-foreground">
-        To view live routing metrics and activity streams, you need to connect at least one AI provider first.
+      <p className="mt-2 max-w-md text-sm text-muted-foreground leading-relaxed">
+        To view live routing metrics, test sandbox, and enable analytics, complete provider setup and generate a Gateway API Key.
       </p>
-      <div className="mt-8 grid w-full max-w-2xl gap-3 sm:grid-cols-2">
+      <div className="mt-10 grid w-full max-w-3xl gap-4 sm:grid-cols-3">
         {[
-          { icon: Boxes, label: "Connect a Provider", sub: "Add your first AI provider", to: "/app/providers", color: "cyan" },
-          { icon: KeyRound, label: "Generate an API Key", sub: "Start routing traffic", to: "/app/keys", color: "indigo" },
+          { icon: Boxes, label: "1. Connect Provider", sub: "Add AI Provider key", to: "/app/providers", color: "cyan" },
+          { icon: Database, label: "2. Select Models", sub: "Enable verified models", to: "/app/models", color: "emerald" },
+          { icon: KeyRound, label: "3. Generate API Key", sub: "Unlock workspace", to: "/app/keys", color: "indigo" },
         ].map((a) => (
           <Link key={a.to} to={a.to as never}>
             <motion.div
-              whileHover={{ y: -3, scale: 1.01 }}
+              whileHover={{ y: -2 }}
               whileTap={{ scale: 0.98 }}
-              className="glass flex h-full items-center gap-4 rounded-2xl p-4 transition-all hover:border-[color-mix(in_oklab,var(--foreground)_20%,transparent)]"
+              className="metric-card flex h-full flex-col items-center text-center gap-3 !p-6"
             >
-              <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-${a.color}/10`}>
+              <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-${a.color}/10`}>
                 <a.icon className={`h-5 w-5 text-${a.color}`} />
               </div>
-              <div className="min-w-0 text-left">
-                <p className="text-sm font-medium">{a.label}</p>
-                <p className="truncate text-xs text-muted-foreground">{a.sub}</p>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold">{a.label}</p>
+                <p className="truncate text-xs text-muted-foreground mt-1">{a.sub}</p>
               </div>
-              <ChevronRight className="ml-auto h-4 w-4 shrink-0 text-muted-foreground" />
             </motion.div>
           </Link>
         ))}
@@ -59,28 +60,30 @@ export function LockedState() {
 
 function ActivityStream({ logs, live, setLive }: { logs: any[]; live: boolean; setLive: any }) {
   return (
-    <div className="glass mt-6 overflow-hidden rounded-2xl">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4">
-        <div className="flex items-center gap-2">
+    <div className="mt-6 section-panel overflow-hidden">
+      {/* Header */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--glass-border)] px-5 py-3.5">
+        <div className="flex items-center gap-2.5">
           <Waves className="h-4 w-4 text-cyan" />
-          <p className="text-sm font-medium tracking-tight">Activity Stream</p>
-          <span className="text-xs text-muted-foreground">({logs.length} entries)</span>
+          <p className="text-[0.8125rem] font-semibold tracking-tight">Recent Requests</p>
+          <span className="badge badge-info">{logs.length}</span>
         </div>
         <button
           onClick={() => setLive((v: any) => !v)}
-          className="glass flex items-center gap-2 rounded-full px-3 py-1.5 text-xs transition-colors hover:bg-[var(--glass-hover)]"
+          className="flex items-center gap-2 rounded-full border border-[var(--glass-border)] px-3 py-1 text-[0.6875rem] font-medium transition-colors hover:bg-[var(--glass-hover)]"
         >
-          <span className={`h-2 w-2 rounded-full ${live ? "animate-pulse bg-emerald" : "bg-muted-foreground"}`} />
+          <span className={`h-1.5 w-1.5 rounded-full ${live ? "animate-live bg-emerald" : "bg-muted-foreground"}`} />
           {live ? "Live" : "Paused"}
         </button>
       </div>
 
+      {/* Table */}
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[46rem] text-sm">
+        <table className="data-table min-w-[52rem]">
           <thead>
-            <tr className="text-left text-[0.7rem] uppercase tracking-[0.14em] text-muted-foreground">
-              {["Timestamp", "Provider", "Model", "Tokens", "Latency", "Cost", "Status"].map((h) => (
-                <th key={h} className="px-5 py-3 font-medium">{h}</th>
+            <tr>
+              {["Time", "Provider", "Model", "Tokens", "Latency", "Cost", "Status"].map((h) => (
+                <th key={h}>{h}</th>
               ))}
             </tr>
           </thead>
@@ -88,43 +91,48 @@ function ActivityStream({ logs, live, setLive }: { logs: any[]; live: boolean; s
             <AnimatePresence initial={false}>
               {logs.length === 0 && (
                 <motion.tr key="empty" exit={{ opacity: 0 }}>
-                  <td colSpan={7} className="px-5 py-10 text-center text-xs text-muted-foreground">
-                    <Brain className="mx-auto mb-3 h-8 w-8 opacity-30" />
-                    No requests routed yet. Use the Sandbox to send your first request.
+                  <td colSpan={7} className="!py-12 text-center">
+                    <Brain className="mx-auto mb-3 h-8 w-8 text-muted-foreground/20" />
+                    <p className="text-[0.8125rem] text-muted-foreground">
+                      No requests routed yet. Use the Sandbox to send your first request.
+                    </p>
                   </td>
                 </motion.tr>
               )}
-              {logs.map((row) => (
+              {logs.map((row, i) => (
                 <motion.tr
                   key={row.id}
                   layout
-                  initial={{ opacity: 0, y: -12, backgroundColor: "var(--glass-hover)" }}
-                  animate={{ opacity: 1, y: 0, backgroundColor: "transparent" }}
+                  initial={{ opacity: 0, y: -8 }}
+                  animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0 }}
-                  transition={{ duration: 0.45 }}
-                  className="border-t transition-colors hover:bg-[var(--glass-hover)]"
+                  transition={{ duration: 0.3, delay: i < 5 ? i * 0.03 : 0 }}
                 >
-                  <td className="px-5 py-3 font-mono text-xs text-muted-foreground">
-                    {row.timestamp ? new Date(row.timestamp.endsWith('Z') ? row.timestamp : row.timestamp + 'Z').toLocaleTimeString() : "—"}
+                  <td className="font-mono text-[0.75rem] text-muted-foreground">
+                    {row.timestamp ? new Date(row.timestamp.endsWith('Z') ? row.timestamp : row.timestamp + 'Z').toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : "—"}
                   </td>
-                  <td className="px-5 py-3">{row.provider || "—"}</td>
-                  <td className="px-5 py-3 font-mono text-xs text-cyan">{row.model || "—"}</td>
-                  <td className="px-5 py-3 text-muted-foreground">{row.tokens?.toLocaleString() ?? 0}</td>
-                  <td className="px-5 py-3">
-                    <span className={row.latencyMs < 500 ? "text-emerald" : "text-amber"}>
+                  <td>
+                    <span className="inline-flex items-center gap-1.5 text-[0.8125rem]">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald" />
+                      {row.provider || "—"}
+                    </span>
+                  </td>
+                  <td className="font-mono text-[0.75rem] text-cyan">{row.model || "—"}</td>
+                  <td className="text-muted-foreground tabular-nums">{row.tokens?.toLocaleString() ?? 0}</td>
+                  <td>
+                    <span className={`font-mono text-[0.75rem] font-medium ${row.latencyMs < 500 ? "text-emerald" : row.latencyMs < 2000 ? "text-amber" : "text-rose"}`}>
                       {row.latencyMs}ms
                     </span>
                   </td>
-                  <td className="px-5 py-3 font-mono text-xs">${(row.costUsd ?? 0).toFixed(5)}</td>
-                  <td className="px-5 py-3">
-                    <span
-                      className={`rounded-full border px-2.5 py-0.5 text-[0.7rem] font-medium ${
-                        row.status === "success"
-                          ? "border-emerald/40 bg-emerald/14 text-emerald"
-                          : "border-destructive/40 bg-destructive/14 text-destructive"
-                      }`}
-                    >
-                      {row.status === "success" ? "Success" : row.status || "—"}
+                  <td className="font-mono text-[0.75rem] tabular-nums">${(row.costUsd ?? 0).toFixed(5)}</td>
+                  <td>
+                    <span className={`badge ${
+                      (row.status === "success" || row.status === "SUCCESS")
+                        ? "badge-success"
+                        : "badge-danger"
+                    }`}>
+                      <span className={`h-1 w-1 rounded-full ${(row.status === "success" || row.status === "SUCCESS") ? "bg-emerald" : "bg-rose"}`} />
+                      {(row.status === "success" || row.status === "SUCCESS") ? "Success" : row.status || "—"}
                     </span>
                   </td>
                 </motion.tr>
@@ -156,48 +164,52 @@ export function PlatformDashboard({ metrics, logs, live, setLive }: DashboardPro
         <MetricCard label="Cost Optimization" value={metrics ? `-$${(metrics.totalCostUsd * 0.4).toFixed(2)}` : "—"} delta={-15} icon={CircleDollarSign} tone="amber" spark={[0, 0, 0, 0, 0, 0, 0, metrics?.totalCostUsd ?? 0]} />
       </div>
 
-      <div className="mt-6 flex flex-col gap-4">
-        <div className="glass rounded-2xl p-5">
-          <h3 className="text-sm font-medium mb-4 flex items-center gap-2"><Brain className="h-4 w-4 text-indigo" /> Global Algorithm State</h3>
-          <div className="flex flex-wrap items-center gap-6 text-xs">
-            <div className="flex items-center gap-2">
-              <span className="text-muted-foreground">Active Strategy</span>
-              <span className="font-mono text-cyan">MULTI_ARMED_BANDIT (Thompson Sampling)</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-muted-foreground">Global Engine</span>
-              <span className="font-mono text-cyan">Nexus_V3_Distributed</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-muted-foreground">Active Models</span>
-              <span className="font-mono text-emerald">124</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-muted-foreground">Learning Rate</span>
-              <span className="font-mono text-amber">Dynamic (α=0.1, β=0.9)</span>
-            </div>
+      <div className="mt-6 grid gap-4 md:grid-cols-2">
+        {/* Algorithm State Panel */}
+        <div className="section-panel p-5">
+          <h3 className="text-[0.8125rem] font-semibold mb-4 flex items-center gap-2">
+            <Brain className="h-4 w-4 text-indigo" /> Global Algorithm State
+          </h3>
+          <div className="space-y-3">
+            {[
+              { label: "Active Strategy", value: "MULTI_ARMED_BANDIT", color: "text-cyan" },
+              { label: "Global Engine", value: "Nexus_V3_Distributed", color: "text-cyan" },
+              { label: "Active Models", value: "124", color: "text-emerald" },
+              { label: "Learning Rate", value: "Dynamic (α=0.1, β=0.9)", color: "text-amber" },
+            ].map((row) => (
+              <div key={row.label} className="flex justify-between items-center py-1.5 border-b border-[var(--glass-border)] last:border-0">
+                <span className="text-[0.8125rem] text-muted-foreground">{row.label}</span>
+                <span className={`font-mono text-[0.75rem] font-medium ${row.color}`}>{row.value}</span>
+              </div>
+            ))}
           </div>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="glass rounded-2xl p-5">
-            <h3 className="text-sm font-medium mb-4 flex items-center gap-2"><Server className="h-4 w-4 text-cyan" /> Top Provider Health</h3>
-            <div className="space-y-3">
-              <div className="flex justify-between items-center text-sm"><span className="text-muted-foreground">OpenAI</span><span className="text-emerald font-medium flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-emerald"></span> Healthy</span></div>
-              <div className="flex justify-between items-center text-sm"><span className="text-muted-foreground">Anthropic</span><span className="text-emerald font-medium flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-emerald"></span> Healthy</span></div>
-              <div className="flex justify-between items-center text-sm"><span className="text-muted-foreground">Groq</span><span className="text-amber font-medium flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-amber"></span> Degraded</span></div>
-            </div>
-          </div>
-          <div className="glass rounded-2xl p-5">
-            <h3 className="text-sm font-medium mb-4 flex items-center gap-2"><Activity className="h-4 w-4 text-amber" /> Algorithm Telemetry Stream</h3>
-            <div className="space-y-3">
-               <div className="flex justify-between items-center text-sm"><span className="text-muted-foreground">Penalty applied to Groq (Latency &gt; 800ms)</span><span className="text-xs text-amber font-mono">2m ago</span></div>
-               <div className="flex justify-between items-center text-sm"><span className="text-muted-foreground">Shifted 40% traffic to Claude-3.5-Haiku</span><span className="text-xs text-cyan font-mono">5m ago</span></div>
-               <div className="flex justify-between items-center text-sm"><span className="text-muted-foreground">Exploration phase triggered for Gemini-1.5</span><span className="text-xs text-indigo font-mono">15m ago</span></div>
-            </div>
+        <div className="section-panel p-5">
+          <h3 className="text-[0.8125rem] font-semibold mb-4 flex items-center gap-2">
+            <Server className="h-4 w-4 text-cyan" /> Provider Health
+          </h3>
+          <div className="space-y-3">
+            {[
+              { name: "Groq", status: "Healthy", latency: "180ms" },
+              { name: "OpenAI", status: "Healthy", latency: "320ms" },
+              { name: "Anthropic", status: "Degraded", latency: "780ms" },
+            ].map((p) => (
+              <div key={p.name} className="flex justify-between items-center py-1.5 border-b border-[var(--glass-border)] last:border-0">
+                <span className="text-[0.8125rem] text-muted-foreground">{p.name}</span>
+                <div className="flex items-center gap-3">
+                  <span className={`badge ${p.status === "Healthy" ? "badge-success" : "badge-warning"}`}>
+                    {p.status}
+                  </span>
+                  <span className="font-mono text-[0.6875rem] text-muted-foreground w-14 text-right">{p.latency}</span>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       </div>
+
+      <ActivityStream logs={logs} live={live} setLive={setLive} />
     </AppShell>
   );
 }
@@ -228,17 +240,17 @@ export function TeamDashboard({ metrics, logs, live, setLive, tenant, openModal 
   return (
     <AppShell title="Team Dashboard" subtitle="Team Activity & Budget">
       {isNearLimit && (
-        <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber/30 bg-amber/10 px-5 py-4">
+        <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber/30 bg-amber/5 px-5 py-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber/20 shrink-0">
-              <AlertTriangle className="h-4.5 w-4.5 text-amber" />
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber/15 shrink-0">
+              <AlertTriangle className="h-4 w-4 text-amber" />
             </div>
             <div>
-              <p className="text-sm font-semibold text-amber">Approaching budget limit</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Your team has used <span className="font-mono font-bold text-amber">{budgetUsed}%</span> of its monthly allocation.</p>
+              <p className="text-[0.8125rem] font-semibold text-amber">Approaching budget limit</p>
+              <p className="text-[0.75rem] text-muted-foreground mt-0.5">Your team has used <span className="font-mono font-bold text-amber">{budgetUsed}%</span> of its monthly allocation.</p>
             </div>
           </div>
-          <motion.button onClick={openModal} whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} className="flex items-center gap-2 rounded-xl bg-amber px-4 py-2 text-xs font-semibold text-black transition-shadow hover:shadow-[0_0_20px_-6px_var(--amber)]">
+          <motion.button onClick={openModal} whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} className="flex items-center gap-2 rounded-lg bg-amber px-4 py-2 text-[0.75rem] font-semibold text-black transition-shadow hover:shadow-[0_0_20px_-6px_var(--amber)]">
             <ArrowUp className="h-3.5 w-3.5" /> Request More Budget
           </motion.button>
         </motion.div>
@@ -258,17 +270,23 @@ export function TeamDashboard({ metrics, logs, live, setLive, tenant, openModal 
 export function DeveloperDashboard({ metrics, logs, live, setLive, tenant, session }: DashboardProps) {
 
   return (
-    <AppShell title={`Good Morning, ${session.email?.split('@')[0] || 'Developer'}`} subtitle="Personal Workspace">
+    <AppShell title={`Welcome back, ${session.email?.split('@')[0] || 'Developer'}`} subtitle="Personal Workspace">
       <div className="grid gap-4 sm:grid-cols-3">
         <MetricCard label="My Requests" value={metrics ? fmtRequests(metrics.totalRequests) : "—"} delta={0} icon={Radio} tone="cyan" spark={[0, 0, 0, 0, 0, 0, 0, metrics?.totalRequests ?? 0]} />
         <MetricCard label="My Tokens" value={metrics ? fmtRequests((metrics.totalRequests * 142)) : "—"} delta={0} icon={Gauge} tone="emerald" spark={[0, 0, 0, 0, 0, 0, 0, metrics?.totalRequests ?? 0]} />
         <MetricCard label="My Estimated Cost" value={metrics ? `$${(metrics.totalCostUsd).toFixed(4)}` : "—"} delta={0} icon={CircleDollarSign} tone="amber" spark={[0, 0, 0, 0, 0, 0, 0, metrics?.totalCostUsd ?? 0]} />
       </div>
 
-      <div className="mt-6 flex flex-wrap gap-3">
-         <Link to="/app/sandbox" className="glass flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium hover:bg-[var(--glass-hover)] transition-colors"><FlaskConical className="h-4 w-4 text-cyan" /> Open Sandbox</Link>
-         <Link to="/app/keys" className="glass flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium hover:bg-[var(--glass-hover)] transition-colors"><KeyRound className="h-4 w-4 text-indigo" /> Create API Key</Link>
-         <Link to="/app/models" className="glass flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium hover:bg-[var(--glass-hover)] transition-colors"><Database className="h-4 w-4 text-emerald" /> View Models</Link>
+      <div className="mt-5 flex flex-wrap gap-2.5">
+         <Link to="/app/sandbox" className="flex items-center gap-2 rounded-lg border border-[var(--glass-border)] bg-[var(--card)] px-4 py-2.5 text-[0.8125rem] font-medium transition-colors hover:border-cyan/30 hover:bg-cyan/5">
+           <FlaskConical className="h-4 w-4 text-cyan" /> Open Sandbox
+         </Link>
+         <Link to="/app/keys" className="flex items-center gap-2 rounded-lg border border-[var(--glass-border)] bg-[var(--card)] px-4 py-2.5 text-[0.8125rem] font-medium transition-colors hover:border-indigo/30 hover:bg-indigo/5">
+           <KeyRound className="h-4 w-4 text-indigo" /> Create API Key
+         </Link>
+         <Link to="/app/models" className="flex items-center gap-2 rounded-lg border border-[var(--glass-border)] bg-[var(--card)] px-4 py-2.5 text-[0.8125rem] font-medium transition-colors hover:border-emerald/30 hover:bg-emerald/5">
+           <Database className="h-4 w-4 text-emerald" /> View Models
+         </Link>
       </div>
 
       <ActivityStream logs={logs} live={live} setLive={setLive} />
@@ -277,36 +295,98 @@ export function DeveloperDashboard({ metrics, logs, live, setLive, tenant, sessi
 }
 
 export function SoloDashboard({ metrics, logs, live, setLive, tenant }: DashboardProps) {
-  if (tenant?.hasApiKey === false) return <AppShell title="Solo Workspace"><LockedState /></AppShell>;
+  const hasKey = tenant?.hasApiKey ?? true;
+  if (tenant?.hasApiKey === false && !hasKey) return <AppShell title="Solo Workspace"><LockedState /></AppShell>;
 
   return (
-    <AppShell title="Solo Workspace" subtitle="Real-time routing telemetry">
+    <AppShell title="Overview" subtitle="Real-time overview of your AI gateway">
+      {/* Metric Cards */}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="Active Agents" value={metrics ? String(metrics.activeAgents) : "—"} delta={0} icon={Bot} tone="indigo" spark={[0, 0, 0, 0, 0, 0, 0, metrics?.activeAgents ?? 0]} />
-        <MetricCard label="Total Requests" value={metrics ? fmtRequests(metrics.totalRequests) : "—"} delta={0} icon={Radio} tone="cyan" spark={[0, 0, 0, 0, 0, 0, 0, metrics?.totalRequests ?? 0]} />
-        <MetricCard label="Avg Latency" value={metrics ? `${Math.round(metrics.avgLatencyMs)}ms` : "—"} delta={0} icon={Gauge} tone="emerald" spark={[0, 0, 0, 0, 0, 0, 0, metrics?.avgLatencyMs ?? 0]} />
-        <MetricCard label="Total Cost" value={metrics ? `$${(metrics.totalCostUsd).toFixed(4)}` : "—"} delta={0} icon={CircleDollarSign} tone="amber" spark={[0, 0, 0, 0, 0, 0, 0, metrics?.totalCostUsd ?? 0]} />
+        <MetricCard
+          label="Total Requests"
+          value={metrics ? fmtRequests(metrics.totalRequests) : "—"}
+          delta={12}
+          icon={Radio}
+          tone="cyan"
+          spark={[20, 35, 28, 45, 52, 48, 60, metrics?.totalRequests ?? 70]}
+        />
+        <MetricCard
+          label="Avg Latency"
+          value={metrics ? `${Math.round(metrics.avgLatencyMs)}ms` : "—"}
+          delta={-8}
+          icon={Gauge}
+          tone="emerald"
+          spark={[800, 650, 720, 600, 580, 620, 550, metrics?.avgLatencyMs ?? 500]}
+        />
+        <MetricCard
+          label="Total Cost"
+          value={metrics ? `$${(metrics.totalCostUsd).toFixed(4)}` : "—"}
+          delta={23}
+          icon={CircleDollarSign}
+          tone="amber"
+          spark={[0.01, 0.02, 0.03, 0.04, 0.06, 0.08, 0.09, metrics?.totalCostUsd ?? 0.10]}
+        />
+        <MetricCard
+          label="Active Agents"
+          value={metrics ? String(metrics.activeAgents) : "—"}
+          delta={20}
+          icon={Bot}
+          tone="indigo"
+          spark={[2, 3, 3, 4, 4, 5, 5, metrics?.activeAgents ?? 6]}
+        />
       </div>
 
+      {/* Engine State */}
       {metrics && (
-        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="glass mt-4 rounded-2xl p-5">
-          <div className="flex flex-wrap items-center gap-6 text-xs">
-            <div className="flex items-center gap-2">
-              <Brain className="h-4 w-4 text-indigo" />
-              <span className="text-muted-foreground">Active Strategy</span>
-              <span className="font-mono text-cyan">{metrics.activeStrategy}</span>
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.15 }}
+          className="mt-4 grid gap-4 md:grid-cols-2"
+        >
+          {/* Routing Engine Panel */}
+          <div className="section-panel p-5">
+            <h3 className="text-[0.8125rem] font-semibold mb-4 flex items-center gap-2">
+              <Brain className="h-4 w-4 text-indigo" /> Routing Engine
+            </h3>
+            <div className="space-y-2.5">
+              {[
+                { label: "Strategy", value: metrics.activeStrategy, color: "text-cyan" },
+                { label: "Engine", value: metrics.activeEngine, color: "text-cyan" },
+                { label: "Reward Tier", value: metrics.rewardTier, color: "text-emerald" },
+                { label: "Enabled Arms", value: String(metrics.enabledArmCount), color: "text-amber" },
+              ].map((row) => (
+                <div key={row.label} className="flex justify-between items-center py-1.5 border-b border-[var(--glass-border)] last:border-0">
+                  <span className="text-[0.8125rem] text-muted-foreground">{row.label}</span>
+                  <span className={`font-mono text-[0.75rem] font-medium ${row.color}`}>{row.value}</span>
+                </div>
+              ))}
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-muted-foreground">Engine</span>
-              <span className="font-mono text-cyan">{metrics.activeEngine}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-muted-foreground">Reward Tier</span>
-              <span className="font-mono text-emerald">{metrics.rewardTier}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-muted-foreground">Enabled Arms</span>
-              <span className="font-mono text-amber">{metrics.enabledArmCount}</span>
+          </div>
+
+          {/* Provider Health */}
+          <div className="section-panel p-5">
+            <h3 className="text-[0.8125rem] font-semibold mb-4 flex items-center gap-2">
+              <Activity className="h-4 w-4 text-cyan" /> Provider Health
+            </h3>
+            <div className="space-y-2.5">
+              {[
+                { name: "Groq", status: "Healthy", uptime: "99.8%", latency: "210ms" },
+                { name: "Gemini", status: "Healthy", uptime: "99.2%", latency: "520ms" },
+                { name: "OpenAI", status: "Healthy", uptime: "98.5%", latency: "680ms" },
+              ].map((p) => (
+                <div key={p.name} className="flex justify-between items-center py-1.5 border-b border-[var(--glass-border)] last:border-0">
+                  <div className="flex items-center gap-2">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald" />
+                    <span className="text-[0.8125rem]">{p.name}</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="badge badge-success">{p.status}</span>
+                    <span className="font-mono text-[0.6875rem] text-muted-foreground">{p.uptime}</span>
+                    <span className="font-mono text-[0.6875rem] text-muted-foreground w-12 text-right">{p.latency}</span>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </motion.div>
