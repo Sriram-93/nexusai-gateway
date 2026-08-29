@@ -80,9 +80,12 @@ public class ResponseCacheService {
      */
     public Mono<String> getCachedResponse(String model, String prompt) {
         String exactKey = buildCacheKey(model, prompt);
+        String globalKey = CACHE_PREFIX + "global:" + sha256("global:" + (prompt != null ? prompt.toLowerCase().trim() : ""));
 
         return redisTemplate.opsForValue().get(exactKey)
                 .switchIfEmpty(Mono.justOrEmpty(inMemoryCache.get(exactKey)))
+                .switchIfEmpty(redisTemplate.opsForValue().get(globalKey))
+                .switchIfEmpty(Mono.justOrEmpty(inMemoryCache.get(globalKey)))
                 .switchIfEmpty(Mono.defer(() -> findSemanticMatch(model, prompt)))
                 .doOnNext(resp -> {
                     if (resp != null) hitCount.incrementAndGet();
@@ -93,7 +96,7 @@ public class ResponseCacheService {
                 .onErrorResume(e -> {
                     org.slf4j.LoggerFactory.getLogger(ResponseCacheService.class)
                         .warn("Redis connection failed in getCachedResponse; using dynamic vector fallback: {}", e.getMessage());
-                    String memResp = inMemoryCache.get(exactKey);
+                    String memResp = inMemoryCache.get(exactKey) != null ? inMemoryCache.get(exactKey) : inMemoryCache.get(globalKey);
                     if (memResp != null) {
                         hitCount.incrementAndGet();
                         return Mono.just(memResp);
@@ -113,22 +116,27 @@ public class ResponseCacheService {
      */
     public Mono<Void> cacheResponse(String model, String prompt, String response) {
         String exactKey = buildCacheKey(model, prompt);
+        String globalKey = CACHE_PREFIX + "global:" + sha256("global:" + (prompt != null ? prompt.toLowerCase().trim() : ""));
+
         inMemoryCache.put(exactKey, response);
+        inMemoryCache.put(globalKey, response);
 
         // Store vector embedding asynchronously for dynamic neural vector similarity matching
         Mono.fromRunnable(() -> {
             try {
                 Embedding emb = embeddingModel.embed(prompt).content();
                 vectorCache.put(exactKey, new VectorCacheEntry(model.toLowerCase(), prompt, emb, response));
+                vectorCache.put(globalKey, new VectorCacheEntry("global", prompt, emb, response));
             } catch (Exception e) {
                 org.slf4j.LoggerFactory.getLogger(ResponseCacheService.class)
                     .warn("Failed to generate vector embedding for cache entry: {}", e.getMessage());
             }
         }).subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic()).subscribe();
 
-        return redisTemplate.opsForValue().set(exactKey, response, CACHE_TTL)
-                .onErrorResume(e -> Mono.empty())
-                .then();
+        return Mono.when(
+            redisTemplate.opsForValue().set(exactKey, response, CACHE_TTL).onErrorResume(e -> Mono.empty()),
+            redisTemplate.opsForValue().set(globalKey, response, CACHE_TTL).onErrorResume(e -> Mono.empty())
+        ).then();
     }
 
     /**
