@@ -254,15 +254,25 @@ public class ModelDiscoveryService {
      * and enables ONLY working reasoning models in the registered_models repository.
      */
     public java.util.Map<String, Object> testAndLoadWorkingGeminiModels(String apiKeyOverride) {
-        return testAndLoadWorkingGeminiModels("gemini", apiKeyOverride);
+        return testAndLoadWorkingGeminiModels("gemini", apiKeyOverride, null);
     }
 
     public java.util.Map<String, Object> testAndLoadWorkingGeminiModels(String targetSlug, String apiKeyOverride) {
+        return testAndLoadWorkingGeminiModels(targetSlug, apiKeyOverride, null);
+    }
+
+    public java.util.Map<String, Object> testAndLoadWorkingGeminiModels(String targetSlug, String apiKeyOverride, String tenantId) {
         try {
             String apiKey = apiKeyOverride;
             String slug = (targetSlug != null && !targetSlug.isBlank()) ? targetSlug : "gemini";
 
-            List<ProviderConfig> configs = providerConfigRepository.findAllBySlug(slug);
+            List<ProviderConfig> configs = new java.util.ArrayList<>();
+            if (tenantId != null && !tenantId.isBlank()) {
+                providerConfigRepository.findBySlugAndTenantId(slug, tenantId).ifPresent(configs::add);
+            }
+            if (configs.isEmpty()) {
+                configs = providerConfigRepository.findAllBySlug(slug);
+            }
             if (configs.isEmpty()) {
                 configs = providerConfigRepository.findAllBySlug("gemini");
             }
@@ -286,7 +296,12 @@ public class ModelDiscoveryService {
                 );
             }
 
-            List<String> candidateModelIds = discoverLiveGeminiModels(apiKey);
+            List<String> candidateModelIds = new java.util.ArrayList<>(discoverLiveGeminiModels(apiKey));
+            if (candidateModelIds.isEmpty()) {
+                candidateModelIds.addAll(List.of(
+                    "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro", "gemini-1.5-flash-8b"
+                ));
+            }
 
             List<String> verifiedWorking = new java.util.ArrayList<>();
             List<java.util.Map<String, String>> failedModels = new java.util.ArrayList<>();
@@ -382,8 +397,20 @@ public class ModelDiscoveryService {
                     for (com.fasterxml.jackson.databind.JsonNode m : root.get("models")) {
                         String name = m.path("name").asText("");
                         if (name.startsWith("models/")) name = name.substring(7);
-                        // Rely strictly on API provider payload / ping success rather than hardcoded string matching
-                        discovered.add(name);
+                        // Filter for generation-capable models only
+                        JsonNode methods = m.path("supportedGenerationMethods");
+                        boolean canGenerate = false;
+                        if (methods.isArray()) {
+                            for (JsonNode method : methods) {
+                                if ("generateContent".equals(method.asText())) {
+                                    canGenerate = true;
+                                    break;
+                                }
+                            }
+                        }
+                        if (canGenerate) {
+                            discovered.add(name);
+                        }
                     }
                 }
                 if (!discovered.isEmpty()) return discovered;
@@ -400,13 +427,24 @@ public class ModelDiscoveryService {
      * and enables ONLY verified working models in the registered_models repository.
      */
     public java.util.Map<String, Object> testAndLoadWorkingModelsForProvider(String slug, String apiKeyOverride) {
+        return testAndLoadWorkingModelsForProvider(slug, apiKeyOverride, null);
+    }
+
+    public java.util.Map<String, Object> testAndLoadWorkingModelsForProvider(String slug, String apiKeyOverride, String tenantId) {
         if ("gemini".equalsIgnoreCase(slug) || "google".equalsIgnoreCase(slug)) {
-            return testAndLoadWorkingGeminiModels(slug, apiKeyOverride);
+            return testAndLoadWorkingGeminiModels(slug, apiKeyOverride, tenantId);
         }
 
         try {
             String apiKey = apiKeyOverride;
-            List<ProviderConfig> configs = providerConfigRepository.findAllBySlug(slug);
+            List<ProviderConfig> configs = new java.util.ArrayList<>();
+            if (tenantId != null && !tenantId.isBlank()) {
+                providerConfigRepository.findBySlugAndTenantId(slug, tenantId).ifPresent(configs::add);
+            }
+            if (configs.isEmpty()) {
+                configs = providerConfigRepository.findAllBySlug(slug);
+            }
+
             for (ProviderConfig pc : configs) {
                 if (pc.getApiKey() != null && !pc.getApiKey().isBlank()) {
                     apiKey = pc.getApiKey();
@@ -416,10 +454,6 @@ public class ModelDiscoveryService {
 
             // Check if provider requires key but none was found
             if ((apiKey == null || apiKey.isBlank()) && !"ollama".equalsIgnoreCase(slug)) {
-                for (ProviderConfig pc : configs) {
-                    pc.setApiKey(null);
-                    providerConfigRepository.save(pc);
-                }
                 log.warn("Test & Load for provider '{}' aborted: No API key configured.", slug);
                 return java.util.Map.of(
                     "provider", slug,
@@ -428,8 +462,6 @@ public class ModelDiscoveryService {
                     "message", "No API key configured for provider '" + slug + "'. Please add a valid API key first."
                 );
             }
-
-
 
             List<String> candidateModelIds = new java.util.ArrayList<>();
             List<String> liveDiscovered = List.of();
@@ -441,8 +473,6 @@ public class ModelDiscoveryService {
                     candidateModelIds.addAll(liveDiscovered);
                 }
             }
-
-            // Removed fallback / Supplementary candidates from predefined list to enforce strict dynamic discovery
 
             // Include models already in database for this provider
             List<String> dbModels = modelRepository.findByProviderSlug(slug).stream()
@@ -456,6 +486,12 @@ public class ModelDiscoveryService {
                 }
             }
 
+            // Add standard fallback candidates if candidateModelIds is empty
+            if (candidateModelIds.isEmpty()) {
+                List<String> fallbacks = getFallbackModelsForProvider(slug);
+                candidateModelIds.addAll(fallbacks);
+            }
+
             List<String> verifiedWorking = new java.util.ArrayList<>();
             List<java.util.Map<String, String>> failedModels = new java.util.ArrayList<>();
 
@@ -466,7 +502,7 @@ public class ModelDiscoveryService {
                 verifiedWorking.addAll(candidateModelIds);
                 log.info("Provider '{}' API Key & Base URL VERIFIED via /v1/models (HTTP 200 OK)! Loaded {} models instantly.", slug, verifiedWorking.size());
             } else if (!candidateModelIds.isEmpty()) {
-                // If /v1/models didn't list endpoints, test max 2 candidate models to confirm credentials
+                // If /v1/models didn't list endpoints, test candidate models to confirm credentials
                 int testedCount = 0;
                 for (String modelId : candidateModelIds) {
                     if (testedCount >= 3) break;
@@ -498,12 +534,6 @@ public class ModelDiscoveryService {
             if (apiKey != null && !apiKey.isBlank() && (!verifiedWorking.isEmpty() || liveModelsDiscovered)) {
                 for (ProviderConfig pc : configs) {
                     pc.setApiKey(apiKey);
-                    providerConfigRepository.save(pc);
-                }
-            } else if (verifiedWorking.isEmpty() && !liveModelsDiscovered) {
-                // If 0 working models found, clear invalid/unverified key from DB
-                for (ProviderConfig pc : configs) {
-                    pc.setApiKey(null);
                     providerConfigRepository.save(pc);
                 }
             }
@@ -553,6 +583,20 @@ public class ModelDiscoveryService {
                 "error", fatal.getClass().getSimpleName() + ": " + fatal.getMessage()
             );
         }
+    }
+
+    private List<String> getFallbackModelsForProvider(String slug) {
+        if (slug == null) return List.of();
+        String s = slug.toLowerCase();
+        if (s.contains("groq")) return List.of("llama-3.3-70b-versatile", "llama-3.1-8b-instant", "llama3-70b-8192", "llama3-8b-8192", "deepseek-r1-distill-llama-70b");
+        if (s.contains("gemini") || s.contains("google")) return List.of("gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro", "gemini-1.5-flash-8b");
+        if (s.contains("openai")) return List.of("gpt-4o", "gpt-4o-mini", "o1-mini", "o3-mini");
+        if (s.contains("anthropic") || s.contains("claude")) return List.of("claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022");
+        if (s.contains("deepseek")) return List.of("deepseek-chat", "deepseek-reasoner");
+        if (s.contains("openrouter")) return List.of("deepseek/deepseek-r1", "anthropic/claude-3.5-sonnet", "meta-llama/llama-3.3-70b-instruct");
+        if (s.contains("mistral")) return List.of("mistral-large-latest", "codestral-latest");
+        if (s.contains("perplexity")) return List.of("sonar-reasoning", "sonar");
+        return List.of();
     }
 
     private List<String> discoverLiveOpenAiCompatibleModels(String slug, String baseUrl, String apiKey) {
@@ -661,14 +705,22 @@ public class ModelDiscoveryService {
     }
 
     public java.util.Map<String, Object> testAndLoadAllProviders() {
-        List<ProviderConfig> configuredList = providerConfigRepository.findAll().stream()
+        return testAndLoadAllProviders(null);
+    }
+
+    public java.util.Map<String, Object> testAndLoadAllProviders(String tenantId) {
+        List<ProviderConfig> configuredList = (tenantId != null && !tenantId.isBlank())
+            ? providerConfigRepository.findByTenantId(tenantId)
+            : providerConfigRepository.findAll();
+
+        configuredList = configuredList.stream()
             .filter(pc -> pc.getApiKey() != null && !pc.getApiKey().isBlank())
             .collect(java.util.stream.Collectors.toList());
 
         List<java.util.Map<String, Object>> results = new java.util.ArrayList<>();
         for (ProviderConfig pc : configuredList) {
             try {
-                results.add(testAndLoadWorkingModelsForProvider(pc.getSlug(), pc.getApiKey()));
+                results.add(testAndLoadWorkingModelsForProvider(pc.getSlug(), pc.getApiKey(), tenantId));
             } catch (Exception e) {
                 results.add(java.util.Map.of("provider", pc.getSlug(), "status", "ERROR", "error", e.getMessage()));
             }

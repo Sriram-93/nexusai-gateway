@@ -207,8 +207,11 @@ public class ProviderManagementController {
      */
     @PostMapping("/gemini/test-and-load-reasoning")
     public reactor.core.publisher.Mono<ResponseEntity<?>> testAndLoadGeminiReasoningModels(
-            @RequestParam(required = false) String apiKey) {
-        return reactor.core.publisher.Mono.fromCallable(() -> discoveryService.testAndLoadWorkingGeminiModels(apiKey))
+            @RequestParam(required = false) String apiKey,
+            @RequestHeader(value = "X-Tenant-Id", required = false) String tenantIdHeader,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        String tenantId = resolveTenantId(tenantIdHeader, authHeader);
+        return reactor.core.publisher.Mono.fromCallable(() -> discoveryService.testAndLoadWorkingGeminiModels("gemini", apiKey, tenantId))
             .subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic())
             .map(ResponseEntity::ok);
     }
@@ -221,8 +224,11 @@ public class ProviderManagementController {
     @PostMapping("/{slug}/test-and-load")
     public reactor.core.publisher.Mono<ResponseEntity<?>> testAndLoadProviderModels(
             @PathVariable String slug,
-            @RequestParam(required = false) String apiKey) {
-        return reactor.core.publisher.Mono.fromCallable(() -> discoveryService.testAndLoadWorkingModelsForProvider(slug, apiKey))
+            @RequestParam(required = false) String apiKey,
+            @RequestHeader(value = "X-Tenant-Id", required = false) String tenantIdHeader,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        String tenantId = resolveTenantId(tenantIdHeader, authHeader);
+        return reactor.core.publisher.Mono.fromCallable(() -> discoveryService.testAndLoadWorkingModelsForProvider(slug, apiKey, tenantId))
             .subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic())
             .map(ResponseEntity::ok);
     }
@@ -232,8 +238,11 @@ public class ProviderManagementController {
      * Live tests candidate models across all configured providers.
      */
     @PostMapping("/test-and-load-all")
-    public reactor.core.publisher.Mono<ResponseEntity<?>> testAndLoadAllProviders() {
-        return reactor.core.publisher.Mono.fromCallable(() -> discoveryService.testAndLoadAllProviders())
+    public reactor.core.publisher.Mono<ResponseEntity<?>> testAndLoadAllProviders(
+            @RequestHeader(value = "X-Tenant-Id", required = false) String tenantIdHeader,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        String tenantId = resolveTenantId(tenantIdHeader, authHeader);
+        return reactor.core.publisher.Mono.fromCallable(() -> discoveryService.testAndLoadAllProviders(tenantId))
             .subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic())
             .map(ResponseEntity::ok);
     }
