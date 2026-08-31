@@ -24,25 +24,62 @@ public class ApiKeyController {
 
     private final ApiKeyService apiKeyService;
     private final ApiKeyRepository apiKeyRepository;
+    private final com.llm.nexusai_gateway.Security.UserRepository userRepository;
 
-    public ApiKeyController(ApiKeyService apiKeyService, ApiKeyRepository apiKeyRepository) {
+    public ApiKeyController(ApiKeyService apiKeyService, ApiKeyRepository apiKeyRepository, com.llm.nexusai_gateway.Security.UserRepository userRepository) {
         this.apiKeyService = apiKeyService;
         this.apiKeyRepository = apiKeyRepository;
+        this.userRepository = userRepository;
+    }
+
+    public ResponseEntity<List<Map<String, Object>>> getKeys(String projectId) {
+        return getKeys(projectId, null, null, null);
+    }
+
+    public ResponseEntity<List<Map<String, Object>>> getKeys() {
+        return getKeys(null, null, null, null);
     }
 
     /**
      * GET /api/keys
-     * Returns list of API keys in the gateway.
+     * Returns list of API keys in the gateway scoped to the current tenant organization.
      */
     @GetMapping
     public ResponseEntity<List<Map<String, Object>>> getKeys(
-            @RequestParam(required = false) String projectId) {
+            @RequestParam(required = false) String projectId,
+            @RequestHeader(value = "X-Tenant-Id", required = false) String tenantIdHeader,
+            @RequestHeader(value = "Authorization", required = false) String authHeader,
+            org.springframework.web.server.ServerWebExchange exchange) {
         try {
-            List<ApiKey> keys = (projectId != null && !projectId.isBlank())
+            List<ApiKey> allKeys = (projectId != null && !projectId.isBlank())
                     ? apiKeyRepository.findByProjectId(projectId)
                     : apiKeyRepository.findAll();
 
-            List<Map<String, Object>> response = keys.stream().map(this::toMap).toList();
+            String userEmail = exchange != null && exchange.getAttribute("auth_user_id") != null
+                    ? (String) exchange.getAttribute("auth_user_id")
+                    : null;
+
+            String userOrgId = null;
+            if (userEmail != null && !userEmail.isBlank()) {
+                userOrgId = userRepository.findByEmail(userEmail)
+                        .map(u -> u.getOrganization() != null ? u.getOrganization().getId() : null)
+                        .orElse(null);
+            }
+
+            final String targetOrgId = userOrgId;
+            List<ApiKey> tenantKeys = allKeys.stream().filter(k -> {
+                if (targetOrgId == null) return false;
+                try {
+                    return k.getProject() != null &&
+                           k.getProject().getWorkspace() != null &&
+                           k.getProject().getWorkspace().getOrganization() != null &&
+                           targetOrgId.equals(k.getProject().getWorkspace().getOrganization().getId());
+                } catch (Exception e) {
+                    return false;
+                }
+            }).toList();
+
+            List<Map<String, Object>> response = tenantKeys.stream().map(this::toMap).toList();
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             org.slf4j.LoggerFactory.getLogger(ApiKeyController.class).error("Error fetching API keys", e);

@@ -56,52 +56,46 @@ public class GatewaySecurityFilter implements WebFilter {
             return chain.filter(exchange);
         }
 
-        // 3. Extract Authentication Credentials (JWT or API Key)
-        String apiKey = exchange.getRequest().getHeaders().getFirst("X-API-Key");
-        if (apiKey == null || apiKey.isBlank()) {
-            apiKey = exchange.getRequest().getQueryParams().getFirst("apiKey");
+        // 3. Extract Authentication Credentials (JWT first, then API Key)
+        String authHeader = exchange.getRequest().getHeaders().getFirst("Authorization");
+        String token = null;
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            token = authHeader.substring(7);
+        } else {
+            token = exchange.getRequest().getQueryParams().getFirst("token");
         }
+
         Optional<TenantConfig> optTenant = Optional.empty();
 
-        if (apiKey == null || apiKey.isBlank()) {
-            String authHeader = exchange.getRequest().getHeaders().getFirst("Authorization");
-            String token = null;
-            if (authHeader != null && authHeader.startsWith("Bearer ")) {
-                token = authHeader.substring(7);
-            } else {
-                token = exchange.getRequest().getQueryParams().getFirst("token");
-            }
-            
-            if (token != null) {
-                if (token.split("\\.").length == 3) {
-                    // It's a JWT from the frontend
-                    try {
-                        String tenantId = jwtUtil.extractClaim(token, claims -> claims.get("tenantId", String.class));
-                        String extractedUserId = jwtUtil.extractClaim(token, claims -> claims.get("userId", String.class));
-                        if (extractedUserId == null) {
-                            extractedUserId = jwtUtil.extractClaim(token, claims -> claims.getSubject());
-                        }
-                        if (tenantId != null) {
-                            optTenant = tenantRegistry.get(tenantId);
-                        }
-                        if (extractedUserId != null) {
-                            exchange.getAttributes().put("auth_user_id", extractedUserId);
-                        }
-                    } catch (Exception e) {
-                        log.warn("Invalid JWT provided: {}", e.getMessage());
-                    }
-                } else {
-                    apiKey = token;
+        if (token != null && token.split("\\.").length == 3) {
+            // It's a JWT from the frontend session
+            try {
+                String tenantId = jwtUtil.extractClaim(token, claims -> claims.get("tenantId", String.class));
+                String extractedUserId = jwtUtil.extractClaim(token, claims -> claims.get("userId", String.class));
+                if (extractedUserId == null) {
+                    extractedUserId = jwtUtil.extractClaim(token, claims -> claims.getSubject());
                 }
+                if (tenantId != null) {
+                    optTenant = tenantRegistry.get(tenantId);
+                }
+                if (extractedUserId != null) {
+                    exchange.getAttributes().put("auth_user_id", extractedUserId);
+                }
+            } catch (Exception e) {
+                log.warn("Invalid JWT provided: {}", e.getMessage());
             }
         }
 
-        // 4. Determine request type & Validate Authentication
-        boolean isRoutingEndpoint = path.startsWith("/api/chat") || 
-                                    path.startsWith("/api/agent/chat") || 
-                                    path.startsWith("/v1/chat");
-
+        // If JWT wasn't provided or didn't match an active tenant, check X-API-Key
         if (optTenant.isEmpty()) {
+            String apiKey = exchange.getRequest().getHeaders().getFirst("X-API-Key");
+            if (apiKey == null || apiKey.isBlank()) {
+                apiKey = exchange.getRequest().getQueryParams().getFirst("apiKey");
+            }
+            if ((apiKey == null || apiKey.isBlank()) && token != null && token.split("\\.").length != 3) {
+                apiKey = token;
+            }
+
             if (apiKey != null && !apiKey.isBlank()) {
                 Optional<ApiKey> apiKeyOpt = apiKeyService.validateApiKey(apiKey);
                 if (apiKeyOpt.isPresent()) {
@@ -121,14 +115,23 @@ public class GatewaySecurityFilter implements WebFilter {
                     return exchange.getResponse().setComplete();
                 }
             }
-            if (optTenant.isEmpty()) {
-                optTenant = Optional.of(tenantRegistry.getOrCreate("default-tenant"));
-            }
-            if (optTenant.isEmpty()) {
-                log.warn("Missing authentication for request to {}", path);
-                exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
-                return exchange.getResponse().setComplete();
-            }
+        }
+
+        // 4. Determine request type
+        boolean isRoutingEndpoint = path.startsWith("/api/chat") || 
+                                    path.startsWith("/api/agent/chat") || 
+                                    path.startsWith("/v1/chat");
+
+        // Routing endpoints strictly require authentication (Valid JWT or Valid API Key).
+        if (isRoutingEndpoint && optTenant.isEmpty()) {
+            log.warn("Authentication required: No API key or Bearer token provided for routing request to {}", path);
+            exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
+            return exchange.getResponse().setComplete();
+        }
+
+        // Fallback default tenant for non-routing console operations if needed
+        if (optTenant.isEmpty()) {
+            optTenant = Optional.of(tenantRegistry.getOrCreate("default-tenant"));
         }
 
         TenantConfig tenant = optTenant.get();

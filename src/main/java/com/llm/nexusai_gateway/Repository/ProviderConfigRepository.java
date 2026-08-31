@@ -9,8 +9,10 @@ import java.util.List;
 
 @Repository
 public interface ProviderConfigRepository extends JpaRepository<ProviderConfig, Long> {
-    Optional<ProviderConfig> findBySlug(String slug);
     List<ProviderConfig> findAllBySlug(String slug);
+    default Optional<ProviderConfig> findBySlug(String slug) {
+        return findAllBySlug(slug).stream().findFirst();
+    }
     Optional<ProviderConfig> findBySlugAndTenantId(String slug, String tenantId);
     List<ProviderConfig> findByEnabledTrue();
     List<ProviderConfig> findByTenantId(String tenantId);

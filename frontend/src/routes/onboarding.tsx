@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { useUser } from "@/lib/user-context";
 import { useToast } from "@/lib/toast";
 import { providersApi, tenantApi } from "@/lib/api";
+import { NexusLogo } from "@/components/NexusLogo";
 
 export const Route = createFileRoute("/onboarding")({
   beforeLoad: () => {
@@ -60,8 +61,8 @@ const PROVIDERS: ProviderDef[] = [
     fields: [{ key: "apiKey", label: "API Key", placeholder: "gsk_••••••••" }],
   },
   {
-    id: "google", label: "Google AI", slug: "google", type: "GOOGLE", color: "#4285f4",
-    fields: [{ key: "apiKey", label: "API Key", placeholder: "AI••••••••" }],
+    id: "google", label: "Google AI", slug: "gemini", type: "GEMINI", color: "#4285f4",
+    fields: [{ key: "apiKey", label: "API Key", placeholder: "AIzaSy••••••••" }],
   },
   {
     id: "azure", label: "Azure OpenAI", slug: "azure-openai", type: "AZURE_OPENAI", color: "#0078d4",
@@ -164,6 +165,10 @@ function Onboarding() {
         transition={{ duration: 0.65, ease: [0.22, 1, 0.36, 1] }}
         className="glass-strong glow-primary mx-auto max-w-2xl rounded-3xl p-7 sm:p-10"
       >
+        <div className="mb-6 flex justify-between items-center border-b border-[var(--glass-border)] pb-4">
+          <NexusLogo size={32} />
+        </div>
+
         {/* Step indicator */}
         <div className="flex items-center gap-2 mb-8">
           {steps.map((label, i) => {

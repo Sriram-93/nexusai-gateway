@@ -9,7 +9,8 @@ import {
 import { AppShell } from "@/components/AppShell";
 import { MetricCard } from "@/components/nexus/MetricCard";
 import { UpgradeRequestsPanel } from "@/lib/upgrade-requests";
-import type { GlobalMetrics, ActivityLog, StreamEvent } from "@/lib/api";
+import type { GlobalMetrics, ActivityLog, StreamEvent, ProviderSummary } from "@/lib/api";
+import { ProviderLogo } from "@/components/ProviderLogos";
 
 type DashboardProps = {
   metrics: GlobalMetrics | null;
@@ -19,7 +20,86 @@ type DashboardProps = {
   tenant: any;
   openModal: () => void;
   session: any;
+  providers?: ProviderSummary[];
 };
+
+export function ProviderHealthWidget({ providers = [], logs = [] }: { providers?: ProviderSummary[]; logs: any[] }) {
+  // Only display providers that have a configured API key in this account
+  const configuredProviders = providers.filter((p) => p.hasKey && p.enabled);
+
+  if (!configuredProviders || configuredProviders.length === 0) {
+    return (
+      <div className="section-panel p-5">
+        <h3 className="text-[0.8125rem] font-semibold mb-3 flex items-center justify-between">
+          <span className="flex items-center gap-2">
+            <Activity className="h-4 w-4 text-cyan" /> Provider Health
+          </span>
+          <span className="text-[0.6875rem] text-muted-foreground font-mono">0 Connected</span>
+        </h3>
+        <div className="py-6 text-center text-xs text-muted-foreground">
+          <p>No AI provider API keys configured in this account.</p>
+          <div className="mt-2.5">
+            <Link to="/app/providers" className="inline-flex items-center gap-1 text-cyan font-medium hover:underline">
+              + Add API Key
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="section-panel p-5">
+      <h3 className="text-[0.8125rem] font-semibold mb-4 flex items-center justify-between">
+        <span className="flex items-center gap-2">
+          <Activity className="h-4 w-4 text-cyan" /> Provider Health
+        </span>
+        <span className="text-[0.6875rem] text-muted-foreground font-mono">
+          {configuredProviders.length} Configured {configuredProviders.length === 1 ? "Provider" : "Providers"}
+        </span>
+      </h3>
+      <div className="space-y-2.5">
+        {configuredProviders.map((p) => {
+          const providerLogs = logs.filter(
+            (l) =>
+              l.provider &&
+              (l.provider.toLowerCase() === p.slug.toLowerCase() ||
+                l.provider.toLowerCase() === p.displayName.toLowerCase())
+          );
+
+          let avgLatencyStr = "—";
+          if (providerLogs.length > 0) {
+            const sum = providerLogs.reduce((acc, curr) => acc + (curr.latencyMs || 0), 0);
+            avgLatencyStr = `${Math.round(sum / providerLogs.length)}ms`;
+          } else if (p.enabledModelCount > 0) {
+            avgLatencyStr = "Active";
+          }
+
+          const isHealthy = p.enabled && p.hasKey;
+
+          return (
+            <div key={p.slug} className="flex justify-between items-center py-1.5 border-b border-[var(--glass-border)] last:border-0">
+              <div className="flex items-center gap-2.5">
+                <ProviderLogo slug={p.slug} name={p.displayName} className="h-4 w-4 shrink-0" />
+                <span className="text-[0.8125rem] font-medium">{p.displayName || p.slug}</span>
+                <span className={`h-1.5 w-1.5 rounded-full ${isHealthy ? "bg-emerald" : "bg-rose"}`} />
+                <span className="text-[0.65rem] text-muted-foreground font-mono">({p.enabledModelCount} models)</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className={`badge ${isHealthy ? "badge-success" : "badge-danger"}`}>
+                  {isHealthy ? "Healthy" : "No Key"}
+                </span>
+                <span className="font-mono text-[0.6875rem] text-muted-foreground w-16 text-right">
+                  {avgLatencyStr}
+                </span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 export function LockedState() {
   return (
@@ -185,28 +265,7 @@ export function PlatformDashboard({ metrics, logs, live, setLive }: DashboardPro
           </div>
         </div>
 
-        <div className="section-panel p-5">
-          <h3 className="text-[0.8125rem] font-semibold mb-4 flex items-center gap-2">
-            <Server className="h-4 w-4 text-cyan" /> Provider Health
-          </h3>
-          <div className="space-y-3">
-            {[
-              { name: "Groq", status: "Healthy", latency: "180ms" },
-              { name: "OpenAI", status: "Healthy", latency: "320ms" },
-              { name: "Anthropic", status: "Degraded", latency: "780ms" },
-            ].map((p) => (
-              <div key={p.name} className="flex justify-between items-center py-1.5 border-b border-[var(--glass-border)] last:border-0">
-                <span className="text-[0.8125rem] text-muted-foreground">{p.name}</span>
-                <div className="flex items-center gap-3">
-                  <span className={`badge ${p.status === "Healthy" ? "badge-success" : "badge-warning"}`}>
-                    {p.status}
-                  </span>
-                  <span className="font-mono text-[0.6875rem] text-muted-foreground w-14 text-right">{p.latency}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+        <ProviderHealthWidget providers={providers} logs={logs} />
       </div>
 
       <ActivityStream logs={logs} live={live} setLive={setLive} />
@@ -294,7 +353,7 @@ export function DeveloperDashboard({ metrics, logs, live, setLive, tenant, sessi
   );
 }
 
-export function SoloDashboard({ metrics, logs, live, setLive, tenant }: DashboardProps) {
+export function SoloDashboard({ metrics, logs, live, setLive, tenant, providers }: DashboardProps) {
   const hasKey = tenant?.hasApiKey ?? true;
   if (tenant?.hasApiKey === false && !hasKey) return <AppShell title="Solo Workspace"><LockedState /></AppShell>;
 
@@ -365,30 +424,7 @@ export function SoloDashboard({ metrics, logs, live, setLive, tenant }: Dashboar
           </div>
 
           {/* Provider Health */}
-          <div className="section-panel p-5">
-            <h3 className="text-[0.8125rem] font-semibold mb-4 flex items-center gap-2">
-              <Activity className="h-4 w-4 text-cyan" /> Provider Health
-            </h3>
-            <div className="space-y-2.5">
-              {[
-                { name: "Groq", status: "Healthy", uptime: "99.8%", latency: "210ms" },
-                { name: "Gemini", status: "Healthy", uptime: "99.2%", latency: "520ms" },
-                { name: "OpenAI", status: "Healthy", uptime: "98.5%", latency: "680ms" },
-              ].map((p) => (
-                <div key={p.name} className="flex justify-between items-center py-1.5 border-b border-[var(--glass-border)] last:border-0">
-                  <div className="flex items-center gap-2">
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald" />
-                    <span className="text-[0.8125rem]">{p.name}</span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className="badge badge-success">{p.status}</span>
-                    <span className="font-mono text-[0.6875rem] text-muted-foreground">{p.uptime}</span>
-                    <span className="font-mono text-[0.6875rem] text-muted-foreground w-12 text-right">{p.latency}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
+          <ProviderHealthWidget providers={providers} logs={logs} />
         </motion.div>
       )}
 

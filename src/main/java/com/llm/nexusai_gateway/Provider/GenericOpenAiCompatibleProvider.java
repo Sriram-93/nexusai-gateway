@@ -56,10 +56,15 @@ public class GenericOpenAiCompatibleProvider implements LlmProvider {
 
     @Override
     public Mono<ProviderResponse> chatWithKey(String providerSlug, String message, String modelName, String overrideApiKey) {
-        return providerConfigRepository.findBySlug(providerSlug) // Note: this fetches global config if tenantId is missing, but it is acceptable if the key is overridden
-            .map(config -> executeChat(config, message, modelName, overrideApiKey))
-            .orElseGet(() -> Mono.error(new IllegalArgumentException(
-                "Provider with slug '" + providerSlug + "' not found in registry.")));
+        ProviderConfig config = providerConfigRepository.findAllBySlug(providerSlug).stream()
+            .filter(c -> (c.getApiKey() != null && !c.getApiKey().isBlank()) || (overrideApiKey != null && !overrideApiKey.isBlank()))
+            .findFirst()
+            .orElseGet(() -> providerConfigRepository.findAllBySlug(providerSlug).stream().findFirst().orElse(null));
+
+        if (config == null) {
+            return Mono.error(new IllegalArgumentException("Provider with slug '" + providerSlug + "' not found in registry."));
+        }
+        return executeChat(config, message, modelName, overrideApiKey);
     }
 
     private Mono<ProviderResponse> executeChat(ProviderConfig config, String message, String modelName, String overrideApiKey) {

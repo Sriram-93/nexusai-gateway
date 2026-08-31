@@ -352,8 +352,9 @@ function RoutingSimulatorStudio() {
         reliabilityWeight: reliabilityW / 100,
       });
       setSimulationResult(res);
-    } catch (err) {
-      setSimError(err instanceof Error ? err.message : "Failed to run routing simulation.");
+    } catch (err: any) {
+      setSimError(err?.message || "Failed to execute dynamic policy simulation.");
+      setSimulationResult(null);
     } finally {
       setIsSimulating(false);
     }

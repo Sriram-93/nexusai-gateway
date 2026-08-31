@@ -96,7 +96,7 @@ public class SyntheticTrafficGenerator {
         return Flux.fromIterable(tasks)
                 .flatMap(mono -> mono, 3) // Concurrency limit of 3
                 .collectList()
-                .map(results -> {
+                .flatMap(results -> responseCacheService.getStatsAsync().map(cacheStats -> {
                     int successes = 0;
                     long totalDuration = 0;
 
@@ -111,7 +111,6 @@ public class SyntheticTrafficGenerator {
                     }
 
                     double avgLat = results.isEmpty() ? 0 : (double) totalDuration / results.size();
-                    ResponseCacheService.CacheStats cacheStats = responseCacheService.getStats();
 
                     log.info("Benchmark complete: {}/{} successful. Avg latency: {} ms", successes, requestCount, avgLat);
 
@@ -123,6 +122,6 @@ public class SyntheticTrafficGenerator {
                             cacheStats.hitRatio(),
                             modelDist
                     );
-                });
+                }));
     }
 }

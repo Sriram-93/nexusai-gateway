@@ -26,7 +26,16 @@ public class FederatedLinUcbEngine implements DecisionEngine {
 
     private static final Logger log = LoggerFactory.getLogger(FederatedLinUcbEngine.class);
 
-    private final double explorationAlpha;
+    private volatile double explorationAlpha;
+
+    public double getAlpha() {
+        return this.explorationAlpha;
+    }
+
+    public void setAlpha(double alpha) {
+        this.explorationAlpha = alpha;
+        log.info("FederatedLinUCB exploration alpha parameter updated to {}", alpha);
+    }
     private final int dimension;
     private final int numComponents = 4; // Quality, Latency, Cost, Availability
 

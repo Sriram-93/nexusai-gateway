@@ -281,9 +281,11 @@ function CreateKeyModal({ onClose, onCreated, tenantId }: { onClose: () => void;
         window.dispatchEvent(new Event("nexus_key_created"));
       }
       onCreated(entry);
+      success("API Key Generated", "Secret key issued by backend gateway.");
     } catch (err: any) {
-      setCreateError(err.message ?? "Failed to generate key");
-      toastError("Key generation failed", err.message);
+      const msg = err?.message || "Failed to generate API key";
+      setCreateError(msg);
+      toastError("Key Generation Error", msg);
     } finally {
       setIsCreating(false);
     }

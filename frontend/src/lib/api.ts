@@ -37,6 +37,21 @@ export class ApiError extends Error {
   }
 }
 
+export async function authFetch(path: string, options: RequestInit = {}): Promise<Response> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...((options.headers as Record<string, string>) ?? {}),
+  };
+  const jwt = getJwt();
+  if (jwt) headers["Authorization"] = `Bearer ${jwt}`;
+  const gatewayKey = typeof window !== "undefined" ? sessionStorage.getItem("nexus_api_key") : null;
+  if (gatewayKey && !headers["X-API-Key"] && (path.startsWith("/v1/") || path.startsWith("/api/chat"))) {
+    headers["X-API-Key"] = gatewayKey;
+  }
+  const url = path.startsWith("http") ? path : `${getBaseUrl()}${path}`;
+  return fetch(url, { ...options, headers });
+}
+
 async function request<T>(
   path: string,
   options: RequestInit = {}
@@ -50,7 +65,7 @@ async function request<T>(
   if (jwt) headers["Authorization"] = `Bearer ${jwt}`;
 
   const gatewayKey = typeof window !== "undefined" ? sessionStorage.getItem("nexus_api_key") : null;
-  if (gatewayKey && !headers["X-API-Key"]) {
+  if (gatewayKey && !headers["X-API-Key"] && (path.startsWith("/v1/") || path.startsWith("/api/chat"))) {
     headers["X-API-Key"] = gatewayKey;
   }
 
@@ -69,7 +84,7 @@ async function request<T>(
     }
     if (res.status === 429) throw new ApiError(429, "Rate limit exceeded. Please wait before retrying.");
     if (res.status === 402) throw new ApiError(402, "Budget exhausted. Upgrade your plan or top-up.");
-    if (res.status === 401 && !path.startsWith("/api/auth/login")) {
+    if (res.status === 401 && path.startsWith("/api/auth/me")) {
       if (typeof window !== "undefined") {
         sessionStorage.removeItem("nexus_jwt");
         sessionStorage.removeItem("nexus_api_key");

@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { authApi, ApiError } from "@/lib/api";
 import { useUser, deriveRoleFromSignup } from "@/lib/user-context";
 import { useToast } from "@/lib/toast";
+import { NexusLogo } from "@/components/NexusLogo";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -100,7 +101,7 @@ function AuthPage() {
         setSession({
           jwt: res.token,
           tenantId: res.tenantId,
-          apiKey: null, // fetched later if needed
+          apiKey: null,
           tier: res.tier as any,
           role: res.role as any,
           orgName: res.orgName || null,
@@ -109,7 +110,7 @@ function AuthPage() {
         
         success("Welcome back!", "Login successful.");
         
-        // Custom routing based on role
+        // Dynamic routing based on user role and provider setup
         if (res.role === "ORG_ADMIN") {
           navigate({ to: "/app/members" });
         } else if (res.role === "TEAM_LEAD" || res.role === "TEAM_MEMBER") {
@@ -122,14 +123,15 @@ function AuthPage() {
             } else {
               navigate({ to: "/app" });
             }
-          } catch (e) {
+          } catch {
             navigate({ to: "/app/providers" });
           }
         } else {
           navigate({ to: "/app" });
         }
       } catch (err: any) {
-        setSignInError(err.message ?? "Invalid email or password.");
+        const msg = err instanceof ApiError ? err.message : (err.message ?? "Invalid email or password.");
+        setSignInError(msg);
       } finally {
         setIsLoading(false);
       }
@@ -143,10 +145,7 @@ function AuthPage() {
       {/* Left: neural routing visual */}
       <section className="relative flex min-h-[26rem] flex-col justify-between overflow-hidden border-b p-8 lg:min-h-screen lg:border-b-0 lg:border-r lg:p-14">
         <div className="flex items-center gap-2 text-sm font-medium tracking-tight">
-          <span className="grad-primary flex h-8 w-8 items-center justify-center rounded-lg">
-            <Sparkles className="h-4 w-4 text-primary-foreground" />
-          </span>
-          NexusAI
+          <NexusLogo size={36} />
         </div>
 
         <NeuralMesh className="pointer-events-none absolute inset-0 h-full w-full opacity-90" />

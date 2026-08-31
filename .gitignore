@@ -36,6 +36,16 @@ build/
 .env
 
 extras/
+Doc/
+experiments/
+paper/
+gateway.html
+NexusAI_Gateway_UI_Redesign_Antigravity.md
+test_linucb.js
+test_routing.js
+mvn_run.log
+mvn_run.pid
+backend.log
 
 ### Databases & Logs ###
 *.db
@@ -51,3 +61,4 @@ frontend/.env.local
 # OS
 .DS_Store
 Thumbs.db
+

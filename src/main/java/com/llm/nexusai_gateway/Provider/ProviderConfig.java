@@ -33,7 +33,30 @@ public class ProviderConfig {
         /** Azure OpenAI API */
         AZURE,
         /** Local Ollama server (OpenAI-compatible schema, but model list via /api/tags) */
-        OLLAMA
+        OLLAMA;
+
+        @com.fasterxml.jackson.annotation.JsonCreator
+        public static ProviderType fromString(String value) {
+            if (value == null || value.isBlank()) return OPENAI_COMPATIBLE;
+            String upper = value.trim().toUpperCase();
+            if (upper.equals("GOOGLE") || upper.equals("GOOGLE_AI") || upper.equals("GOOGLE_GEMINI") || upper.equals("GEMINI")) {
+                return GEMINI;
+            }
+            if (upper.equals("AWS_BEDROCK") || upper.equals("BEDROCK") || upper.equals("AWS")) {
+                return BEDROCK;
+            }
+            if (upper.equals("AZURE_OPENAI") || upper.equals("AZURE")) {
+                return AZURE;
+            }
+            if (upper.equals("OPENAI")) {
+                return OPENAI_COMPATIBLE;
+            }
+            try {
+                return ProviderType.valueOf(upper);
+            } catch (Exception e) {
+                return OPENAI_COMPATIBLE;
+            }
+        }
     }
 
     @Id

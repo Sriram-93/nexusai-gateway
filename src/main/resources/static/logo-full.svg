@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 100" fill="none">
+  <defs>
+    <linearGradient id="nexusGrad" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ff4b72" />
+      <stop offset="35%" stop-color="#ff7f3e" />
+      <stop offset="70%" stop-color="#00d2ff" />
+      <stop offset="100%" stop-color="#0066ff" />
+    </linearGradient>
+    <linearGradient id="textGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#ffffff" />
+      <stop offset="100%" stop-color="#e0f2fe" />
+    </linearGradient>
+  </defs>
+
+  <!-- Logo Mark Squircle -->
+  <g transform="translate(10, 10)">
+    <rect x="0" y="0" width="80" height="80" rx="20" fill="url(#nexusGrad)" />
+    <path d="M 12 12 H 52 C 32 12 12 32 12 52 Z" fill="#0b0c16" />
+  </g>
+
+  <!-- Logo Text -->
+  <text x="110" y="62" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="44" font-weight="800" letter-spacing="-0.5" fill="url(#textGrad)">
+    Nexus<tspan fill="url(#nexusGrad)">AI</tspan>
+  </text>
+</svg>

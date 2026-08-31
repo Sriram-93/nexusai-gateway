@@ -1,9 +1,10 @@
 import { motion, AnimatePresence } from "motion/react";
+import { NexusLogoIcon } from "../NexusLogo";
 import { useEffect, useState, useRef } from "react";
 import { Radio, Zap, ShieldAlert, Cpu, Activity, Sparkles, CheckCircle2 } from "lucide-react";
 import { type AuditLogEntry } from "@/lib/api";
 
-const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080") as string;
+const API_BASE = ((import.meta as any).env?.VITE_API_BASE_URL ?? "http://localhost:8080") as string;
 
 interface TrafficFlowVisualizerProps {
   onEvent?: (event: AuditLogEntry) => void;
@@ -116,8 +117,8 @@ export function TrafficFlowVisualizer({ onEvent }: TrafficFlowVisualizerProps) {
           <div className="absolute -top-2.5 left-1/2 -translate-x-1/2 rounded-full border border-indigo/30 bg-indigo/20 px-2 py-0.5 text-[0.6rem] font-mono text-indigo font-bold">
             LinUCB BANDIT
           </div>
-          <div className="mx-auto my-1 flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo/10 text-indigo">
-            <Cpu className="h-6 w-6 animate-pulse" />
+          <div className="mx-auto my-1 flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo/10">
+            <NexusLogoIcon size={28} />
           </div>
           <p className="text-xs font-bold text-foreground">NexusAI Control Plane</p>
           <p className="text-[0.65rem] text-muted-foreground font-mono mt-0.5">Context → Policy → Reward</p>

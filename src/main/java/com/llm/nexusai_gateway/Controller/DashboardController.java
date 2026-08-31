@@ -118,6 +118,7 @@ public class DashboardController {
             
             Set<String> tenantProviderSlugs = (tenantId != null) 
                 ? providerConfigRepository.findByTenantId(tenantId).stream()
+                    .filter(p -> p.getApiKey() != null && !p.getApiKey().isBlank() && p.isEnabled())
                     .map(com.llm.nexusai_gateway.Provider.ProviderConfig::getSlug).collect(Collectors.toSet())
                 : Collections.emptySet();
 
@@ -189,9 +190,7 @@ public class DashboardController {
                 } else {
                     logs = logRepository.findTop50ByTenantIdOrderByIdDesc(tenantId);
                 }
-                if (logs == null || logs.isEmpty()) {
-                    logs = logRepository.findTop50ByOrderByIdDesc();
-                }
+                if (logs == null) logs = Collections.emptyList();
             }
             return logs.stream().map(log -> {
                 Map<String, Object> row = new LinkedHashMap<>();
@@ -276,6 +275,7 @@ public class DashboardController {
             
             Set<String> tenantProviderSlugs = (tenantId != null) 
                 ? providerConfigRepository.findByTenantId(tenantId).stream()
+                    .filter(p -> p.getApiKey() != null && !p.getApiKey().isBlank() && p.isEnabled())
                     .map(com.llm.nexusai_gateway.Provider.ProviderConfig::getSlug).collect(Collectors.toSet())
                 : Collections.emptySet();
 
@@ -414,7 +414,7 @@ public class DashboardController {
                 "updated", updated,
                 "alpha", alpha,
                 "activeEngine", routingEngineManager.getActiveEngineClass(),
-                "message", updated ? "Bandit exploration alpha updated." : "Active engine is not LinUCB. Switch strategy to ADAPTIVE first."
+                "message", updated ? "Bandit exploration alpha updated." : "Active engine is not a LinUCB bandit engine. Switch strategy to ADAPTIVE or FEDERATED first."
             ));
         } catch (NumberFormatException e) {
             return ResponseEntity.badRequest().body(Map.of("error", "Invalid numeric value for alpha"));

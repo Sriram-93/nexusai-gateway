@@ -28,7 +28,7 @@ public class ResponseCacheService {
     private final ReactiveStringRedisTemplate redisTemplate;
     private static final String CACHE_PREFIX = "cache:response:";
     private static final Duration CACHE_TTL = Duration.ofHours(1);
-    private static final double SEMANTIC_SIMILARITY_THRESHOLD = 0.88; // Dynamic vector similarity cutoff
+    private static final double SEMANTIC_SIMILARITY_THRESHOLD = 0.78; // Dynamic vector similarity cutoff
 
     private final AtomicLong hitCount = new AtomicLong(0);
     private final AtomicLong missCount = new AtomicLong(0);
@@ -66,12 +66,24 @@ public class ResponseCacheService {
 
         return redisTemplate.getConnectionFactory().getReactiveConnection().ping()
                 .map(res -> "PONG".equalsIgnoreCase(res))
+                .timeout(Duration.ofMillis(500))
                 .onErrorReturn(false)
                 .map(active -> new CacheStats(h, m, ratio, costSaved, latencySaved, active));
     }
 
     public CacheStats getStats() {
-        return getStatsAsync().block(Duration.ofSeconds(2));
+        long h = hitCount.get();
+        long m = missCount.get();
+        long total = h + m;
+        double ratio = total > 0 ? ((double) h / total) * 100.0 : 0.0;
+        double costSaved = h * 0.0025;
+        long latencySaved = h * 450;
+        try {
+            Boolean active = getStatsAsync().timeout(Duration.ofMillis(300)).map(CacheStats::redisActive).onErrorReturn(false).block();
+            return new CacheStats(h, m, ratio, costSaved, latencySaved, Boolean.TRUE.equals(active));
+        } catch (Exception e) {
+            return new CacheStats(h, m, ratio, costSaved, latencySaved, false);
+        }
     }
 
     /**
@@ -156,7 +168,7 @@ public class ResponseCacheService {
             double highestSimilarity = 0.0;
 
             for (VectorCacheEntry entry : vectorCache.values()) {
-                if (entry.model().equalsIgnoreCase(sanitizedModel)) {
+                if (entry.model().equalsIgnoreCase(sanitizedModel) || entry.model().equalsIgnoreCase("global")) {
                     double similarity = CosineSimilarity.between(queryEmbedding, entry.embedding());
                     if (similarity > highestSimilarity) {
                         highestSimilarity = similarity;

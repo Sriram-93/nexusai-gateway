@@ -10,6 +10,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/lib/toast";
+import { PageLoadingSkeleton } from "@/components/nexus/PageLoadingSkeleton";
+import { authFetch } from "@/lib/api";
 
 export const Route = createFileRoute("/app/health")({
   head: () => ({
@@ -81,10 +83,9 @@ function ModelHealthPage() {
   const loadHealthData = async () => {
     setLoading(true);
     try {
-      const headers = { "X-Tenant-Id": "default-tenant" };
       const [resHealth, resLogs] = await Promise.all([
-        fetch("/api/models/health", { headers }).then(r => r.json()),
-        fetch("/api/models/health/logs", { headers }).then(r => r.json())
+        authFetch("/api/models/health").then(r => r.json()),
+        authFetch("/api/models/health/logs").then(r => r.json())
       ]);
       setData(resHealth);
       setLogs(resLogs || []);
@@ -105,9 +106,8 @@ function ModelHealthPage() {
     setRunningScan(true);
     info("Executing Health Scan...", "Pinging all candidate model endpoints across providers...");
     try {
-      const res = await fetch("/api/models/health/run", {
+      const res = await authFetch("/api/models/health/run", {
         method: "POST",
-        headers: { "X-Tenant-Id": "default-tenant" }
       });
       const result = await res.json();
       success(
@@ -126,9 +126,9 @@ function ModelHealthPage() {
     setTestingModelId(model.armKey);
     info(`Testing ${model.modelId}...`, `Pinging ${model.providerSlug} live API endpoint...`);
     try {
-      const res = await fetch(
+      const res = await authFetch(
         `/api/models/health/verify-single?providerSlug=${model.providerSlug}&modelId=${encodeURIComponent(model.modelId)}`,
-        { method: "POST", headers: { "X-Tenant-Id": "default-tenant" } }
+        { method: "POST" }
       );
       const pingData = await res.json();
       if (pingData.healthy) {
@@ -147,9 +147,8 @@ function ModelHealthPage() {
   const handleToggleModelEnabled = async (model: RegisteredModelHealth) => {
     const action = model.enabled ? "disable" : "enable";
     try {
-      const res = await fetch(`/api/providers/${model.providerSlug}/models/${encodeURIComponent(model.modelId)}/${action}`, {
+      const res = await authFetch(`/api/providers/${model.providerSlug}/models/${encodeURIComponent(model.modelId)}/${action}`, {
         method: "PATCH",
-        headers: { "X-Tenant-Id": "default-tenant" }
       });
       if (res.ok) {
         success(`Model ${action === "enable" ? "Enabled" : "Disabled"}`, `${model.modelId} is now ${action === "enable" ? "active for routing" : "disabled"}.`);
@@ -211,11 +210,54 @@ function ModelHealthPage() {
     return "Endpoint Unreachable";
   };
 
+  if (loading) {
+    return (
+      <AppShell title="Model Health Review" subtitle="Real-time automated model health diagnostic review dashboard">
+        <PageLoadingSkeleton
+          title="Gathering Real-Time Health Diagnostics..."
+          subtitle="Querying model ping statistics, latency traces, and circuit breaker telemetry."
+          cardsCount={4}
+        />
+      </AppShell>
+    );
+  }
+
   return (
     <AppShell
       title="Model Health Governance"
       subtitle="Real-time automated diagnostic review, latency metrics, and health trace audit logs."
     >
+      {/* Floating High-Tech Health Scan Banner */}
+      <AnimatePresence>
+        {runningScan && (
+          <motion.div
+            initial={{ opacity: 0, y: -30, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -20, scale: 0.95 }}
+            className="fixed top-16 left-1/2 -translate-x-1/2 z-50 flex items-center gap-4 rounded-2xl border border-cyan-500/50 bg-background/95 px-6 py-3.5 shadow-[0_0_40px_rgba(6,182,212,0.4)] backdrop-blur-xl"
+          >
+            <div className="relative flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-500/20 text-cyan-400 border border-cyan-500/40">
+              <motion.div
+                animate={{ scale: [1, 1.5, 1], opacity: [0.7, 0, 0.7] }}
+                transition={{ repeat: Infinity, duration: 1.3 }}
+                className="absolute inset-0 rounded-xl bg-cyan-500/30"
+              />
+              <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1.8, ease: "linear" }}>
+                <RefreshCw className="h-5 w-5 text-cyan-400" />
+              </motion.div>
+            </div>
+
+            <div>
+              <div className="flex items-center gap-2">
+                <p className="text-xs font-bold text-foreground">Executing Health Diagnostic Scan...</p>
+                <span className="flex h-2.5 w-2.5 rounded-full bg-cyan-400 animate-ping" />
+              </div>
+              <p className="text-[0.7rem] text-muted-foreground">Pinging candidate endpoints across all configured upstream AI providers.</p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <div className="space-y-5">
         {/* View Mode Tabs + Scan Button */}
         <div className="flex flex-wrap items-center justify-between gap-3">

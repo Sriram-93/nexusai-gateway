@@ -37,7 +37,7 @@ function Labs() {
     setRunning("latency");
     clearLogs();
     addLog("Starting latency benchmark — sending 5 sequential requests to /api/chat");
-    addLog("Note: Requires a valid API key configured in session. Go to API Keys if needed.", "info");
+    addLog("Note: Active Gateway LinUCB Bandit Orchestrator engaged.", "info");
 
     const prompts = [
       "What is 2+2?",
@@ -58,8 +58,8 @@ function Labs() {
         addLog(`  ✓ Provider: ${res.provider} | Latency: ${res.latencyMs}ms | Measured: ${elapsed}ms | Engine: ${res.activeEngine}`, "success");
       } catch (err: any) {
         const elapsed = Date.now() - start;
-        addLog(`  ✗ Error: ${err.message} (${elapsed}ms)`, "error");
-        if (err.status === 401) {
+        addLog(`  ✗ Error: ${err?.message || "Request failed"} (${elapsed}ms)`, "error");
+        if (err?.status === 401) {
           addLog("  API key missing or invalid. Configure your key in the API Keys page.", "error");
           break;
         }
@@ -98,8 +98,8 @@ function Labs() {
         engineCounts[res.activeEngine] = (engineCounts[res.activeEngine] ?? 0) + 1;
         addLog(`  → ${res.provider} | ${res.latencyMs}ms | score: ${res.rewardScore?.toFixed(3) ?? "—"}`, "success");
       } catch (err: any) {
-        addLog(`  ✗ ${err.message}`, "error");
-        if (err.status === 401) {
+        addLog(`  ✗ ${err?.message || "Routing error"}`, "error");
+        if (err?.status === 401) {
           addLog("  Configure your API key first.", "error");
           break;
         }
@@ -108,7 +108,7 @@ function Labs() {
 
     addLog("─────────────────────────────────────────", "info");
     Object.entries(providerCounts).forEach(([p, c]) => {
-      addLog(`  ${p}: ${c}/10 selections (${(c / 10 * 100).toFixed(0)}%)`, "data");
+      addLog(`  ${p}: ${c}/10 selections (${((c / 10) * 100).toFixed(0)}%)`, "data");
     });
     Object.entries(engineCounts).forEach(([e, c]) => {
       addLog(`  Engine: ${e} used ${c} time(s)`, "data");

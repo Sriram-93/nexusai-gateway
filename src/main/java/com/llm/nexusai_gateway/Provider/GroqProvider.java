@@ -27,7 +27,11 @@ public class GroqProvider implements LlmProvider {
     @Value("${gateway.mock-missing-providers:false}")
     private boolean mockEnabled;
 
-    private final WebClient webClient = WebClient.create();
+    private final WebClient webClient;
+
+    public GroqProvider(WebClient.Builder webClientBuilder) {
+        this.webClient = webClientBuilder.build();
+    }
 
     @Override
     public Mono<ProviderResponse> chat(String providerSlug, String message, String modelName) {
@@ -70,6 +74,9 @@ public class GroqProvider implements LlmProvider {
                 .bodyToMono(Map.class)
                 .retryWhen(Retry.backoff(2, Duration.ofSeconds(1))
                         .filter(e -> {
+                            if (e instanceof java.io.IOException || e instanceof java.nio.channels.ClosedChannelException || e instanceof io.netty.handler.ssl.SslHandshakeTimeoutException) {
+                                return true;
+                            }
                             if (e instanceof org.springframework.web.reactive.function.client.WebClientResponseException) {
                                 org.springframework.web.reactive.function.client.WebClientResponseException ex = (org.springframework.web.reactive.function.client.WebClientResponseException) e;
                                 return ex.getStatusCode().is5xxServerError() || ex.getStatusCode().value() == 429;

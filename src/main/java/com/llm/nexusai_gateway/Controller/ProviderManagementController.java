@@ -72,12 +72,12 @@ public class ProviderManagementController {
      * </pre>
      */
     @PostMapping
-    public ResponseEntity<?> registerProvider(
+    public reactor.core.publisher.Mono<ResponseEntity<?>> registerProvider(
             @RequestBody ProviderRegistrationRequest request,
             @RequestHeader(value = "X-Tenant-Id", required = false) String tenantIdHeader,
             @RequestHeader(value = "Authorization", required = false) String authHeader) {
         String tenantId = resolveTenantId(tenantIdHeader, authHeader);
-        if (tenantId == null) return ResponseEntity.status(401).body(Map.of("error", "Authentication required"));
+        if (tenantId == null) return reactor.core.publisher.Mono.just(ResponseEntity.status(401).body(Map.of("error", "Authentication required")));
 
         java.util.Map<String, String> creds = request.credentials() != null ? request.credentials() : new java.util.HashMap<>();
         if (request.apiKey() != null && !creds.containsKey("api_key")) {
@@ -95,15 +95,15 @@ public class ProviderManagementController {
         providerConfigRepository.save(config);
         log.info("Registered/Updated provider: slug='{}', type='{}', tenant='{}'", config.getSlug(), config.getType(), tenantId);
 
-        int newModels = discoveryService.discoverModels(config);
-
-        return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
-            "providerId", config.getId(),
-            "slug", config.getSlug(),
-            "status", "CONNECTED",
-            "modelsDiscovered", newModels,
-            "message", "Provider registered. " + newModels + " new models discovered."
-        ));
+        return reactor.core.publisher.Mono.fromCallable(() -> discoveryService.discoverModels(config))
+            .subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic())
+            .map(newModels -> ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
+                "providerId", config.getId(),
+                "slug", config.getSlug(),
+                "status", "CONNECTED",
+                "modelsDiscovered", newModels,
+                "message", "Provider registered. " + newModels + " new models discovered."
+            )));
     }
 
     /** List all registered providers for the calling tenant only. */
@@ -173,30 +173,31 @@ public class ProviderManagementController {
 
     /** Trigger an immediate model re-discovery for a provider (tenant-scoped). */
     @PostMapping("/{slug}/discover")
-    public ResponseEntity<?> triggerDiscovery(
+    public reactor.core.publisher.Mono<ResponseEntity<?>> triggerDiscovery(
             @PathVariable String slug,
             @RequestHeader(value = "X-Tenant-Id", required = false) String tenantIdHeader,
             @RequestHeader(value = "Authorization", required = false) String authHeader) {
         String tenantId = resolveTenantId(tenantIdHeader, authHeader);
-        if (tenantId == null) return ResponseEntity.status(401).body(Map.of("error", "Authentication required"));
+        if (tenantId == null) return reactor.core.publisher.Mono.just(ResponseEntity.status(401).body(Map.of("error", "Authentication required")));
 
-        return providerConfigRepository.findBySlugAndTenantId(slug, tenantId)
-            .map(provider -> {
-                int newModels = discoveryService.discoverModels(provider);
-                return ResponseEntity.ok(Map.of(
-                    "slug", slug,
-                    "newModelsFound", newModels,
-                    "message", "Discovery complete. " + newModels + " new models added to registry."
-                ));
-            })
-            .orElse(ResponseEntity.notFound().build());
+        ProviderConfig provider = providerConfigRepository.findBySlugAndTenantId(slug, tenantId).orElse(null);
+        if (provider == null) return reactor.core.publisher.Mono.just(ResponseEntity.notFound().build());
+
+        return reactor.core.publisher.Mono.fromCallable(() -> discoveryService.discoverModels(provider))
+            .subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic())
+            .map(newModels -> ResponseEntity.ok(Map.of(
+                "slug", slug,
+                "newModelsFound", newModels,
+                "message", "Discovery complete. " + newModels + " new models added to registry."
+            )));
     }
 
     /** Trigger a global model re-discovery for all active providers. */
     @PostMapping("/discover-all")
-    public ResponseEntity<?> discoverAll() {
-        discoveryService.discoverAllProviders();
-        return ResponseEntity.ok(Map.of("message", "Global provider discovery initiated for all active providers."));
+    public reactor.core.publisher.Mono<ResponseEntity<?>> discoverAll() {
+        return reactor.core.publisher.Mono.fromRunnable(() -> discoveryService.discoverAllProviders())
+            .subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic())
+            .then(reactor.core.publisher.Mono.just(ResponseEntity.ok(Map.of("message", "Global provider discovery initiated for all active providers."))));
     }
 
     /**
@@ -374,6 +375,23 @@ public class ProviderManagementController {
     @PatchMapping("/{slug}/models/{modelId}/enable")
     public ResponseEntity<?> enableModel(@PathVariable String slug,
                                          @PathVariable String modelId) {
+        ProviderConfig provider = providerConfigRepository.findBySlug(slug).orElse(null);
+        if (provider == null || provider.getApiKey() == null || provider.getApiKey().isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of(
+                "status", "ERROR",
+                "error", "API Key Missing",
+                "message", "Cannot enable model. Provider '" + slug + "' has no API key configured. Please add an API key first."
+            ));
+        }
+
+        if (!provider.isEnabled()) {
+            return ResponseEntity.badRequest().body(Map.of(
+                "status", "ERROR",
+                "error", "Provider Disabled",
+                "message", "Cannot enable model. Provider '" + slug + "' is currently disabled. Please enable the provider first."
+            ));
+        }
+
         return modelRepository.findByProviderSlugAndModelId(slug, modelId)
             .map(model -> {
                 model.setEnabled(true);

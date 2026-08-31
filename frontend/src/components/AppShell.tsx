@@ -1,16 +1,36 @@
 import { Link, useRouterState, useNavigate } from "@tanstack/react-router";
-import { motion, AnimatePresence } from "motion/react";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   Activity, Hexagon, LogOut, Bell, ChevronRight, Layers, Lock,
-  Menu, X, Command,
+  Menu, X, Command, AlertTriangle
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useState, useEffect } from "react";
 import { MeshBackground } from "./MeshBackground";
 import { ThemeToggle } from "./ThemeToggle";
 import { useUser, type UserRole } from "@/lib/user-context";
-import { tenantApi, keysApi } from "@/lib/api";
+import { tenantApi, keysApi, providersApi } from "@/lib/api";
 import { getNavigation } from "@/lib/navigation-config";
+
+import { NexusLogo } from "./NexusLogo";
+
+const pageVariants = {
+  initial: { opacity: 0, y: 12, scale: 0.995, filter: "blur(4px)" },
+  animate: { 
+    opacity: 1, 
+    y: 0, 
+    scale: 1, 
+    filter: "blur(0px)",
+    transition: { duration: 0.28, ease: [0.16, 1, 0.3, 1] } 
+  },
+  exit: { 
+    opacity: 0, 
+    y: -8, 
+    scale: 0.995, 
+    filter: "blur(2px)",
+    transition: { duration: 0.18, ease: [0.7, 0, 0.84, 0] } 
+  }
+};
 
 const ROLE_LABELS: Record<UserRole, string> = {
   SUPER_ADMIN: "Platform Admin",
@@ -35,12 +55,20 @@ export function AppShell({
   children: ReactNode;
 }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const isNavigating = useRouterState({ select: (s) => s.status === "pending" });
   const navigate = useNavigate();
   const { session, logout } = useUser();
   const role = session.role ?? "SOLO";
   const [showNotifications, setShowNotifications] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [hasActiveProviderKey, setHasActiveProviderKey] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    providersApi.getStatus().then((status) => {
+      setHasActiveProviderKey(status.readyToChat);
+    }).catch(() => setHasActiveProviderKey(true));
+  }, [pathname]);
 
   useEffect(() => {
     const checkKeyStatus = () => {
@@ -94,16 +122,8 @@ export function AppShell({
   const SidebarContent = () => (
     <>
       {/* Brand */}
-      <Link to={"/app" as never} className="mb-7 flex items-center gap-2.5 px-2 group">
-        <span className="grad-primary flex h-8 w-8 items-center justify-center rounded-lg shadow-sm transition-transform duration-200 group-hover:scale-105">
-          <Hexagon className="h-4 w-4 text-primary-foreground" />
-        </span>
-        <span className="leading-tight">
-          <span className="block text-[0.8125rem] font-semibold tracking-tight">NexusAI</span>
-          <span className="block text-[0.5625rem] font-medium uppercase tracking-[0.18em] text-muted-foreground">
-            Gateway
-          </span>
-        </span>
+      <Link to={"/app" as never} className="mb-7 flex items-center px-2 group transition-transform duration-200 hover:scale-[1.02]">
+        <NexusLogo size={34} />
       </Link>
 
       {/* Nav */}
@@ -293,16 +313,44 @@ export function AppShell({
           </div>
         </header>
 
-        {/* Page content */}
-        <motion.main
-          key={pathname}
-          initial={{ opacity: 0, y: 6 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.25, ease: [0.25, 1, 0.5, 1] }}
-          className="relative z-10 px-5 py-5 sm:px-7"
-        >
-          <div className="mx-auto max-w-[86rem]">{children}</div>
-        </motion.main>
+        {/* Top Page Route Switch Loading Bar */}
+        <AnimatePresence>
+          {isNavigating && (
+            <motion.div
+              initial={{ scaleX: 0, opacity: 1 }}
+              animate={{ scaleX: 0.75, opacity: 1 }}
+              exit={{ scaleX: 1, opacity: 0 }}
+              transition={{ duration: 0.3, ease: "easeOut" }}
+              className="fixed top-0 left-0 right-0 h-1 bg-gradient-to-r from-cyan-400 via-indigo-500 to-emerald-400 z-50 origin-left shadow-[0_0_15px_rgba(6,182,212,0.9)]"
+            />
+          )}
+        </AnimatePresence>
+
+        {hasActiveProviderKey === false && pathname !== "/app/providers" && (
+          <div className="relative z-20 bg-amber-500/10 border-b border-amber-500/30 px-5 py-2.5 sm:px-7 text-xs text-amber-600 dark:text-amber-400 flex items-center justify-between gap-3 font-medium">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" />
+              <span><strong>API Key Required:</strong> No AI provider key is configured. Gateway execution features require an active API key.</span>
+            </div>
+            <Link to={"/app/providers" as never} className="px-2.5 py-1 rounded-lg bg-amber-500 text-black font-bold hover:bg-amber-400 text-[0.7rem] transition-colors shrink-0">
+              Configure Key →
+            </Link>
+          </div>
+        )}
+
+        {/* Animated Page Route Content */}
+        <AnimatePresence mode="wait">
+          <motion.main
+            key={pathname}
+            variants={pageVariants}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            className="relative z-10 px-5 py-5 sm:px-7"
+          >
+            <div className="mx-auto max-w-[86rem]">{children}</div>
+          </motion.main>
+        </AnimatePresence>
 
         <footer className="relative z-10 flex items-center gap-1.5 px-5 pb-6 text-[0.625rem] text-muted-foreground/40 sm:px-7">
           <Activity className="h-3 w-3" /> NexusAI Gateway · us-east-1 · v3.0

@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { dashboardApi, tenantApi, getBaseUrl, getJwt, type GlobalMetrics, type ActivityLog, type StreamEvent } from "@/lib/api";
+import { dashboardApi, tenantApi, providersApi, getBaseUrl, getJwt, type GlobalMetrics, type ActivityLog, type StreamEvent, type ProviderSummary } from "@/lib/api";
 import { useUser } from "@/lib/user-context";
 import { useUpgradeRequests } from "@/lib/upgrade-requests";
 import { 
@@ -31,11 +31,17 @@ function DashboardSwitch() {
   const [metrics, setMetrics] = useState<GlobalMetrics | null>(null);
   const [metricsError, setMetricsError] = useState<string | null>(null);
   const [tenant, setTenant] = useState<any>(null);
+  const [providers, setProviders] = useState<ProviderSummary[]>([]);
 
   useEffect(() => {
     dashboardApi.getActivity()
       .then((data) => setLogs(data))
       .catch(console.error);
+
+    providersApi.listProviders()
+      .then((data) => setProviders(data || []))
+      .catch(console.error);
+
     if (session.tenantId) {
       tenantApi.getTenant(session.tenantId)
         .then((t) => {
@@ -82,7 +88,8 @@ function DashboardSwitch() {
     setLive,
     tenant,
     openModal,
-    session
+    session,
+    providers,
   };
 
   switch (role) {

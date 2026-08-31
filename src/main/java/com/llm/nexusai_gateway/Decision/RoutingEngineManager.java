@@ -132,6 +132,8 @@ public class RoutingEngineManager implements DecisionEngine {
         DecisionEngine current = activeEngine.get();
         if (current instanceof LinUcbDecisionEngine ucb) {
             return ucb.getAlpha();
+        } else if (current instanceof FederatedLinUcbEngine fed) {
+            return fed.getAlpha();
         }
         return this.linucbAlpha;
     }
@@ -140,6 +142,9 @@ public class RoutingEngineManager implements DecisionEngine {
         DecisionEngine current = activeEngine.get();
         if (current instanceof LinUcbDecisionEngine ucb) {
             ucb.setAlpha(newAlpha);
+            return true;
+        } else if (current instanceof FederatedLinUcbEngine fed) {
+            fed.setAlpha(newAlpha);
             return true;
         }
         return false;

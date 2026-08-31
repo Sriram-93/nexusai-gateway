@@ -7,7 +7,7 @@ import {
   BrainCircuit, Activity, Coins, Crown, Zap, FlaskConical,
   Settings, Plus, Loader2, ChevronRight, Lock,
 } from "lucide-react";
-import { providersApi, dashboardApi, type ProviderSummary, type ModelSummary, type ModelHealth } from "@/lib/api";
+import { providersApi, dashboardApi, getBaseUrl, authFetch, type ProviderSummary, type ModelSummary, type ModelHealth } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -16,6 +16,8 @@ import { useUser } from "@/lib/user-context";
 import { useUpgradeRequests } from "@/lib/upgrade-requests";
 import { Authorize } from "@/components/Authorize";
 import { useNavigate } from "@tanstack/react-router";
+import { ProviderLogo } from "@/components/ProviderLogos";
+import { PageLoadingSkeleton } from "@/components/nexus/PageLoadingSkeleton";
 
 export const Route = createFileRoute("/app/models")({
   head: () => ({
@@ -99,6 +101,16 @@ function ModelHub() {
 
   const toggleModel = async (model: EnrichedModel, enable: boolean) => {
     if (!canToggle) { openUpgrade(); return; }
+    if (enable) {
+      const parentProv = providers.find((p) => p.slug === model.providerSlug);
+      if (parentProv && (!parentProv.hasKey || !parentProv.enabled)) {
+        toastError(
+          "API Key Required",
+          `Please configure a valid API key for ${model.providerName} in Provider Hub before enabling its models.`
+        );
+        return;
+      }
+    }
     try {
       if (enable) await providersApi.enableModel(model.providerSlug, model.modelId);
       else await providersApi.disableModel(model.providerSlug, model.modelId);
@@ -106,7 +118,7 @@ function ModelHub() {
       if (selectedModel?.armKey === model.armKey) setSelectedModel((p) => p ? { ...p, enabled: enable } : null);
       success(enable ? "Model enabled" : "Model disabled", model.displayName);
     } catch (err: any) {
-      toastError("Update failed", err.message);
+      toastError("Cannot Enable Model", err.message || "Provider API key is missing or disabled.");
     }
   };
 
@@ -117,6 +129,18 @@ function ModelHub() {
       m.displayName.toLowerCase().includes(search.toLowerCase()) ||
       m.modelId.toLowerCase().includes(search.toLowerCase()));
     }), [models, search, showActiveOnly]);
+
+  if (loading) {
+    return (
+      <AppShell title="Model Hub" subtitle="Browse, configure, and assign model access across your workspace">
+        <PageLoadingSkeleton
+          title="Discovering Available AI Models..."
+          subtitle="Querying connected provider endpoints and fetching model performance metrics."
+          cardsCount={4}
+        />
+      </AppShell>
+    );
+  }
 
   const hasData = providers.length > 0 || models.length > 0;
 
@@ -174,7 +198,7 @@ function ModelHub() {
               onClick={async () => {
                 setLoading(true);
                 try {
-                  const res = await fetch("http://localhost:8080/api/providers/gemini/test-and-load-reasoning", { method: "POST" });
+                  const res = await authFetch(`/api/providers/gemini/test-and-load-reasoning`, { method: "POST" });
                   const data = await res.json();
                   if (data.status === "SUCCESS") {
                     success("Reasoning Models Verified", `Loaded ${data.totalActive} working Gemini reasoning models into gateway.`);
@@ -258,8 +282,8 @@ function ModelHub() {
                               )}
                             </div>
                             <div className="flex flex-wrap gap-1.5 text-[0.65rem]">
-                              <span className="flex items-center gap-1 rounded-md bg-[var(--glass-bg)] border border-[var(--glass-border)] px-2 py-1">
-                                <Server className="h-3 w-3 text-muted-foreground" /> {m.providerName}
+                              <span className="flex items-center gap-1.5 rounded-md bg-[var(--glass-bg)] border border-[var(--glass-border)] px-2 py-1 font-medium">
+                                <ProviderLogo slug={m.providerSlug} name={m.providerName} className="h-3.5 w-3.5" /> {m.providerName}
                               </span>
                               {m.contextWindowTokens > 0 && (
                                 <span className="rounded-md bg-[var(--glass-bg)] border border-[var(--glass-border)] px-2 py-1">

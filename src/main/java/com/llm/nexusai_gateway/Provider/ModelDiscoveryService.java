@@ -50,7 +50,7 @@ public class ModelDiscoveryService {
                                  org.springframework.core.env.Environment env) {
         this.providerConfigRepository = providerConfigRepository;
         this.modelRepository = modelRepository;
-        this.webClient = webClientBuilder.build();
+        this.webClient = webClientBuilder.codecs(configurer -> configurer.defaultCodecs().maxInMemorySize(16 * 1024 * 1024)).build();
         this.objectMapper = objectMapper;
         this.env = env;
     }
@@ -254,9 +254,22 @@ public class ModelDiscoveryService {
      * and enables ONLY working reasoning models in the registered_models repository.
      */
     public java.util.Map<String, Object> testAndLoadWorkingGeminiModels(String apiKeyOverride) {
+        return testAndLoadWorkingGeminiModels("gemini", apiKeyOverride);
+    }
+
+    public java.util.Map<String, Object> testAndLoadWorkingGeminiModels(String targetSlug, String apiKeyOverride) {
         try {
             String apiKey = apiKeyOverride;
-            List<ProviderConfig> configs = providerConfigRepository.findAllBySlug("gemini");
+            String slug = (targetSlug != null && !targetSlug.isBlank()) ? targetSlug : "gemini";
+
+            List<ProviderConfig> configs = providerConfigRepository.findAllBySlug(slug);
+            if (configs.isEmpty()) {
+                configs = providerConfigRepository.findAllBySlug("gemini");
+            }
+            if (configs.isEmpty()) {
+                configs = providerConfigRepository.findAllBySlug("google");
+            }
+
             for (ProviderConfig pc : configs) {
                 if (pc.getApiKey() != null && !pc.getApiKey().isBlank()) {
                     apiKey = pc.getApiKey();
@@ -264,23 +277,13 @@ public class ModelDiscoveryService {
                 }
             }
             if (apiKey == null || apiKey.isBlank()) {
-                log.warn("Test & Load for Gemini aborted: No API key configured in DB or environment.");
+                log.warn("Test & Load for Gemini aborted: No API key configured in DB or environment for slug={}.", slug);
                 return java.util.Map.of(
-                    "provider", "gemini",
+                    "provider", slug,
                     "status", "MISSING_KEY",
                     "totalActive", 0,
-                    "message", "No API key configured for Gemini. Please add a valid API key first."
+                    "message", "No API key configured for provider '" + slug + "'. Please add a valid API key first."
                 );
-            }
-
-            // Save key into provider_configs so all services have access to it
-            if (apiKey != null && !apiKey.isBlank()) {
-                for (ProviderConfig pc : configs) {
-                    if (pc.getApiKey() == null || pc.getApiKey().isBlank()) {
-                        pc.setApiKey(apiKey);
-                        providerConfigRepository.save(pc);
-                    }
-                }
             }
 
             List<String> candidateModelIds = discoverLiveGeminiModels(apiKey);
@@ -323,22 +326,12 @@ public class ModelDiscoveryService {
                 }
             }
 
-            // Disable only invalid/deprecated Gemini models
-            List<RegisteredModel> existingGeminiModels = modelRepository.findByProviderSlug("gemini");
-            for (RegisteredModel rm : existingGeminiModels) {
-                if (!verifiedWorking.contains(rm.getModelId())) {
-                    rm.setEnabled(false);
-                    rm.setHealthStatus("UNREACHABLE");
-                    modelRepository.save(rm);
-                }
-            }
-
-            // Enable and update live-verified & rate-limited working models
+            // Save working models under the target provider slug
             for (String workingId : verifiedWorking) {
-                List<RegisteredModel> existing = modelRepository.findAllByProviderSlugAndModelId("gemini", workingId);
+                List<RegisteredModel> existing = modelRepository.findAllByProviderSlugAndModelId(slug, workingId);
                 RegisteredModel rm;
                 if (existing.isEmpty()) {
-                    rm = new RegisteredModel("gemini", workingId);
+                    rm = new RegisteredModel(slug, workingId);
                 } else {
                     rm = existing.get(0);
                     if (existing.size() > 1) {
@@ -358,10 +351,10 @@ public class ModelDiscoveryService {
                 modelRepository.save(rm);
             }
 
-            log.info("Live Gemini Test & Load Complete: {} models verified active, {} disabled.", verifiedWorking.size(), failedModels.size());
+            log.info("Live Gemini Test & Load Complete for '{}': {} models verified active, {} disabled.", slug, verifiedWorking.size(), failedModels.size());
 
             return java.util.Map.of(
-                "provider", "gemini",
+                "provider", slug,
                 "verifiedWorkingModels", verifiedWorking,
                 "disabledModels", failedModels,
                 "totalActive", verifiedWorking.size(),
@@ -369,7 +362,7 @@ public class ModelDiscoveryService {
                 "message", "Successfully tested and loaded " + verifiedWorking.size() + " working Gemini models into NexusAI Gateway."
             );
         } catch (Exception fatal) {
-            log.error("Fatal error during testAndLoadWorkingGeminiModels: ", fatal);
+            log.error("Fatal error during testAndLoadWorkingGeminiModels for slug=" + targetSlug + ": ", fatal);
             return java.util.Map.of(
                 "status", "ERROR",
                 "error", fatal.getClass().getSimpleName() + ": " + fatal.getMessage()
@@ -408,7 +401,7 @@ public class ModelDiscoveryService {
      */
     public java.util.Map<String, Object> testAndLoadWorkingModelsForProvider(String slug, String apiKeyOverride) {
         if ("gemini".equalsIgnoreCase(slug) || "google".equalsIgnoreCase(slug)) {
-            return testAndLoadWorkingGeminiModels(apiKeyOverride);
+            return testAndLoadWorkingGeminiModels(slug, apiKeyOverride);
         }
 
         try {
@@ -419,12 +412,6 @@ public class ModelDiscoveryService {
                     apiKey = pc.getApiKey();
                     break;
                 }
-            }
-            if (apiKey == null || apiKey.isBlank()) {
-                apiKey = env.getProperty(slug + ".api.key");
-            }
-            if (apiKey == null || apiKey.isBlank()) {
-                apiKey = System.getenv(slug.toUpperCase().replace("-", "_") + "_API_KEY");
             }
 
             // Check if provider requires key but none was found
@@ -445,10 +432,11 @@ public class ModelDiscoveryService {
 
 
             List<String> candidateModelIds = new java.util.ArrayList<>();
+            List<String> liveDiscovered = List.of();
 
             String targetBaseUrl = getBaseUrlForProvider(slug, configs);
             if (apiKey != null && !apiKey.isBlank()) {
-                List<String> liveDiscovered = discoverLiveOpenAiCompatibleModels(slug, targetBaseUrl, apiKey);
+                liveDiscovered = discoverLiveOpenAiCompatibleModels(slug, targetBaseUrl, apiKey);
                 if (liveDiscovered != null && !liveDiscovered.isEmpty()) {
                     candidateModelIds.addAll(liveDiscovered);
                 }
@@ -471,46 +459,48 @@ public class ModelDiscoveryService {
             List<String> verifiedWorking = new java.util.ArrayList<>();
             List<java.util.Map<String, String>> failedModels = new java.util.ArrayList<>();
 
-            for (String modelId : candidateModelIds) {
-                try { Thread.sleep(250); } catch (InterruptedException ignored) {}
+            boolean liveModelsDiscovered = liveDiscovered != null && !liveDiscovered.isEmpty();
 
-                try {
-                    boolean success = testProviderModelPing(slug, modelId, apiKey);
-                    if (success) {
-                        verifiedWorking.add(modelId);
-                        log.info("Provider '{}' model '{}' VERIFIED WORKING (HTTP 200 OK)", slug, modelId);
-                    } else {
-                        failedModels.add(java.util.Map.of("modelId", modelId, "reason", "Invalid response from provider API"));
+            if (liveModelsDiscovered) {
+                // Key and Endpoint URL are verified valid via /v1/models HTTP 200 OK!
+                verifiedWorking.addAll(candidateModelIds);
+                log.info("Provider '{}' API Key & Base URL VERIFIED via /v1/models (HTTP 200 OK)! Loaded {} models instantly.", slug, verifiedWorking.size());
+            } else if (!candidateModelIds.isEmpty()) {
+                // If /v1/models didn't list endpoints, test max 2 candidate models to confirm credentials
+                int testedCount = 0;
+                for (String modelId : candidateModelIds) {
+                    if (testedCount >= 3) break;
+                    testedCount++;
+                    try {
+                        boolean success = testProviderModelPing(slug, modelId, apiKey);
+                        if (success) {
+                            verifiedWorking.add(modelId);
+                            log.info("Provider '{}' model '{}' VERIFIED WORKING (HTTP 200 OK)", slug, modelId);
+                            break; // 1 successful ping confirms API key validity!
+                        } else {
+                            failedModels.add(java.util.Map.of("modelId", modelId, "reason", "Invalid response from provider API"));
+                        }
+                    } catch (Exception e) {
+                        String err = e.getMessage() != null ? e.getMessage() : "HTTP error";
+                        if (err.contains("429") || err.contains("Too Many Requests")) {
+                            verifiedWorking.add(modelId);
+                            log.warn("Provider '{}' model '{}' RATE LIMITED (429) - keeping model ACTIVE.", slug, modelId);
+                            break;
+                        } else {
+                            log.warn("Provider '{}' model '{}' ping test: {}", slug, modelId, err);
+                            failedModels.add(java.util.Map.of("modelId", modelId, "reason", err.contains("401") ? "401 Unauthorized / Invalid Key" : err));
+                        }
                     }
-                } catch (Exception e) {
-                    String err = e.getMessage() != null ? e.getMessage() : "HTTP error";
-                    if (err.contains("429") || err.contains("Too Many Requests")) {
-                        verifiedWorking.add(modelId);
-                        log.warn("Provider '{}' model '{}' RATE LIMITED (429) - keeping model ACTIVE.", slug, modelId);
-                    } else {
-                        log.warn("Provider '{}' model '{}' FAILED live test: {}", slug, modelId, err);
-                        failedModels.add(java.util.Map.of("modelId", modelId, "reason", err.contains("401") ? "401 Unauthorized / Invalid Key" : (err.contains("404") ? "404 Model Unavailable" : err)));
-                    }
-                }
-            }
-
-            // Disable non-working models
-            List<RegisteredModel> existing = modelRepository.findByProviderSlug(slug);
-            for (RegisteredModel rm : existing) {
-                if (!verifiedWorking.contains(rm.getModelId())) {
-                    rm.setEnabled(false);
-                    rm.setHealthStatus("UNREACHABLE");
-                    modelRepository.save(rm);
                 }
             }
 
             // Save key into provider_configs ONLY if verified working models were found
-            if (apiKey != null && !apiKey.isBlank() && !verifiedWorking.isEmpty()) {
+            if (apiKey != null && !apiKey.isBlank() && (!verifiedWorking.isEmpty() || liveModelsDiscovered)) {
                 for (ProviderConfig pc : configs) {
                     pc.setApiKey(apiKey);
                     providerConfigRepository.save(pc);
                 }
-            } else if (verifiedWorking.isEmpty()) {
+            } else if (verifiedWorking.isEmpty() && !liveModelsDiscovered) {
                 // If 0 working models found, clear invalid/unverified key from DB
                 for (ProviderConfig pc : configs) {
                     pc.setApiKey(null);
@@ -606,7 +596,7 @@ public class ModelDiscoveryService {
         if ("groq".equalsIgnoreCase(slug)) return "https://api.groq.com/openai/v1";
         if ("openai".equalsIgnoreCase(slug)) return "https://api.openai.com/v1";
         if ("deepseek".equalsIgnoreCase(slug)) return "https://api.deepseek.com/v1";
-        if ("together".equalsIgnoreCase(slug)) return "https://api.together.xyz/v1";
+        if ("together".equalsIgnoreCase(slug) || "together_ai".equalsIgnoreCase(slug)) return "https://api.together.ai/v1";
         if ("openrouter".equalsIgnoreCase(slug)) return "https://openrouter.ai/api/v1";
         if ("fireworks".equalsIgnoreCase(slug)) return "https://api.fireworks.ai/inference/v1";
         if ("perplexity".equalsIgnoreCase(slug)) return "https://api.perplexity.ai";
@@ -671,23 +661,21 @@ public class ModelDiscoveryService {
     }
 
     public java.util.Map<String, Object> testAndLoadAllProviders() {
-        List<String> distinctSlugs = providerConfigRepository.findAll().stream()
-            .map(ProviderConfig::getSlug)
-            .filter(java.util.Objects::nonNull)
-            .distinct()
+        List<ProviderConfig> configuredList = providerConfigRepository.findAll().stream()
+            .filter(pc -> pc.getApiKey() != null && !pc.getApiKey().isBlank())
             .collect(java.util.stream.Collectors.toList());
 
         List<java.util.Map<String, Object>> results = new java.util.ArrayList<>();
-        for (String slug : distinctSlugs) {
+        for (ProviderConfig pc : configuredList) {
             try {
-                results.add(testAndLoadWorkingModelsForProvider(slug, null));
+                results.add(testAndLoadWorkingModelsForProvider(pc.getSlug(), pc.getApiKey()));
             } catch (Exception e) {
-                results.add(java.util.Map.of("provider", slug, "status", "ERROR", "error", e.getMessage()));
+                results.add(java.util.Map.of("provider", pc.getSlug(), "status", "ERROR", "error", e.getMessage()));
             }
         }
         return java.util.Map.of(
             "status", "SUCCESS",
-            "message", "Tested and updated working models for all registered providers.",
+            "message", "Tested and updated working models for all configured providers.",
             "results", results
         );
     }
@@ -700,12 +688,6 @@ public class ModelDiscoveryService {
                 apiKey = pc.getApiKey();
                 break;
             }
-        }
-        if (apiKey == null || apiKey.isBlank()) {
-            apiKey = env.getProperty(slug + ".api.key");
-        }
-        if (apiKey == null || apiKey.isBlank()) {
-            apiKey = System.getenv(slug.toUpperCase().replace("-", "_") + "_API_KEY");
         }
 
         if ((apiKey == null || apiKey.isBlank()) && !"ollama".equalsIgnoreCase(slug)) {

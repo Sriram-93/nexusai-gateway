@@ -25,7 +25,11 @@ public class OllamaProvider implements LlmProvider {
     @Value("${gateway.mock-missing-providers:false}")
     private boolean mockEnabled;
 
-    private final WebClient webClient = WebClient.create();
+    private final WebClient webClient;
+
+    public OllamaProvider(WebClient.Builder webClientBuilder) {
+        this.webClient = webClientBuilder.build();
+    }
 
     @Override
     public Mono<ProviderResponse> chat(String providerSlug, String message, String modelName) {

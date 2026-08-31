@@ -16,7 +16,8 @@ export function BenchmarkVisualizer() {
       const res = await telemetryApi.runBenchmark(12);
       setResult(res);
     } catch (err: any) {
-      setError(err.message || "Failed to execute synthetic benchmark");
+      setError(err?.message || "Failed to execute benchmark test.");
+      setResult(null);
     } finally {
       setRunning(false);
     }
